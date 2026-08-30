@@ -1,11 +1,13 @@
 --[[
-    ERDEVA HUB - Raycast Fence-Vaulting & Pure Native Automation
-    - Raycast wall/fence detection with forward jump momentum
-    - Smoothly hops over circular coop fences (In & Out)
-    - 100% Native Roblox physics (No exploit function hooks)
-    - Plot-Locked Recycler & Scrap Stacking
-    - Screen-Clamped Dragging (TopBar never gets lost off-screen)
-    - Full clean termination on [X]
+    ERDEVA HUB - Strategic Auto-Rebirth & Complete Workflow Engine
+    Workflow:
+    1. Incubator & Feeder Investment
+    2. Maximize Best Chicken & Upgrade Feeders
+    3. Auto-Dump Cash into Upgrades before reset
+    4. Auto-Climb Tower until Rebirth requirement met
+    5. Auto-Fuse pending chickens for bonus multiplier
+    6. Execute Rebirth Confirmation
+    7. Clean post-reset state & restart loop
 ]]
 
 local Players = game:GetService("Players")
@@ -58,7 +60,7 @@ local Flags = {
 }
 
 --==================================================
--- RAYCAST FENCE-VAULTING NAVIGATION
+-- NAVIGATION & RAYCAST FENCE-VAULTING
 --==================================================
 
 local function GetChar()
@@ -75,7 +77,6 @@ local function GetHumanoid()
     return char and char:FindFirstChildOfClass("Humanoid")
 end
 
--- Smart Walk with Raycast Wall/Fence Jump Vaulting
 local function WalkTo(targetPos, maxWait)
     if not IsRunning then return false end
     local hum = GetHumanoid()
@@ -95,7 +96,6 @@ local function WalkTo(targetPos, maxWait)
     while IsRunning and (root.Position - targetPos).Magnitude > 2.5 and (tick() - start < timeout) do
         task.wait(0.1)
 
-        -- Raycast to detect fence/wall in front of player
         local rayOrigin = root.Position - Vector3.new(0, 1, 0)
         local toTarget = (targetPos - root.Position)
         local flatToTarget = Vector3.new(toTarget.X, 0, toTarget.Z)
@@ -108,10 +108,9 @@ local function WalkTo(targetPos, maxWait)
         local hit = workspace:Raycast(rayOrigin, dirUnit * 3.5, rayParams)
         local movedDist = (root.Position - lastPos).Magnitude
 
-        -- If fence detected or movement blocked, vault forward with jump
         if hit or (movedDist < 0.35 and (root.Position - targetPos).Magnitude > 3.0) then
             hum.Jump = true
-            hum:Move(dirUnit, false) -- forward jump momentum over fence
+            hum:Move(dirUnit, false)
             task.wait(0.25)
             hum:MoveTo(targetPos)
         end
@@ -246,7 +245,7 @@ local function IsInBattle()
 end
 
 --==================================================
--- STATE MACHINE: NATURAL HARVEST & RECYCLER
+-- 1. SCRAP HARVEST & DEPOSIT ENGINE
 --==================================================
 
 local collectedCount = 0
@@ -261,7 +260,6 @@ task.spawn(function()
 
                 local targetCapacity = Flags.ScrapCapacity or Flags.RecycleThreshold or 20
 
-                -- 1. Deposit into OWN Recycler when reaching capacity
                 if Flags.AutoRecycleScrap and collectedCount >= targetCapacity then
                     local recPart, recModel = FindMyRecycler()
                     if recPart then
@@ -272,7 +270,6 @@ task.spawn(function()
                     end
                 end
 
-                -- 2. Scan and walk to ground scraps inside coop
                 local availableScraps = {}
                 for _, obj in ipairs(workspace:GetDescendants()) do
                     if not Flags.AutoGrabScraps or not IsRunning then break end
@@ -321,10 +318,9 @@ task.spawn(function()
 end)
 
 --==================================================
--- OTHER AUTOMATIONS
+-- 2. TOWER BATTLE ENGINE
 --==================================================
 
--- AUTO TOWER
 local isTowerBusy = false
 task.spawn(function()
     while IsRunning do
@@ -361,20 +357,81 @@ task.spawn(function()
     end
 end)
 
+--==================================================
+-- 3. STRATEGIC AUTO-REBIRTH WORKFLOW
+--==================================================
+
 task.spawn(function()
     while IsRunning do
         if Flags.AutoRebirth and not IsInBattle() then
             pcall(function()
-                ClickGuiByPattern("rebirth")
-                task.wait(0.25)
-                ClickGuiByPattern("confirm")
-                ClickGuiByPattern("yes")
-                ClickGuiByPattern("do rebirth")
+                local pGui = player:FindFirstChild("PlayerGui")
+                if not pGui then return end
+
+                local rebirthAvailable = false
+
+                for _, b in ipairs(pGui:GetDescendants()) do
+                    if (b:IsA("TextButton") or b:IsA("ImageButton")) and b.Visible then
+                        local n = b.Name:lower() .. " " .. (b:IsA("TextButton") and b.Text:lower() or "")
+                        if n:find("rebirth") and not n:find("autorebirth") then
+                            rebirthAvailable = true
+                            break
+                        end
+                    end
+                end
+
+                if rebirthAvailable then
+                    ClickGuiByPattern("rebirth")
+                    task.wait(0.3)
+
+                    local canConfirm = false
+                    for _, b in ipairs(pGui:GetDescendants()) do
+                        if (b:IsA("TextButton") or b:IsA("ImageButton")) and b.Visible then
+                            local n = (b:IsA("TextButton") and b.Text:lower() or "") .. " " .. b.Name:lower()
+                            if (n:find("confirm") or n:find("yes") or n:find("do rebirth") or n:find("claim rebirth")) and not n:find("close") and not n:find("cancel") then
+                                canConfirm = true
+                                break
+                            end
+                        end
+                    end
+
+                    if canConfirm then
+                        -- Selesaikan fusi ayam untuk bonus koin multiplier
+                        ClickGuiByPattern("fuse")
+                        ClickGuiByPattern("merge")
+                        task.wait(0.2)
+
+                        -- Habiskan Cash ke Feeder, Coop, Incubator sebelum reset
+                        ClickGuiByPattern("upgrade feeder")
+                        ClickGuiByPattern("upgrade incubator")
+                        ClickGuiByPattern("upgrade coop")
+                        ClickGuiByPattern("buy feeder")
+                        task.wait(0.2)
+
+                        -- Konfirmasi Rebirth
+                        ClickGuiByPattern("confirm")
+                        ClickGuiByPattern("yes")
+                        ClickGuiByPattern("do rebirth")
+                        ClickGuiByPattern("claim rebirth")
+
+                        task.wait(3.0)
+                        myPlotCache = nil
+                        collectedCount = 0
+                        ProcessedScraps = {}
+                        isTowerBusy = false
+                    else
+                        ClickGuiByPattern("close")
+                    end
+                end
             end)
         end
-        task.wait(1.5)
+        task.wait(2.5)
     end
 end)
+
+--==================================================
+-- 4. UTILITY & UPGRADE AUTOMATIONS
+--==================================================
 
 task.spawn(function()
     while IsRunning do
@@ -782,4 +839,4 @@ AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
 SetTab("Farm")
-print("[ERDEVA HUB] Raycast Vaulting Engine Ready.")
+print("[ERDEVA HUB] 7-Step Strategic Rebirth Engine Ready.")
