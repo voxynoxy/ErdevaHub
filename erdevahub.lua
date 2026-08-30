@@ -388,33 +388,80 @@ task.spawn(function()
     end
 end)
 
+-- Jalan ke pad fisik di world, lalu tekan semua ProximityPrompt/ClickDetector yang cocok
+local function WalkAndFireAllPrompts(patterns)
+    local root = GetRoot()
+    if not root then return end
+    local targets = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        local combined = ""
+        if obj:IsA("ProximityPrompt") then
+            combined = obj.ActionText:lower() .. " " .. obj.ObjectText:lower() .. " " .. (obj.Parent and obj.Parent.Name:lower() or "")
+        elseif obj:IsA("ClickDetector") then
+            combined = (obj.Parent and obj.Parent.Name:lower() or "") .. " " .. ((obj.Parent and obj.Parent.Parent) and obj.Parent.Parent.Name:lower() or "")
+        end
+        if combined ~= "" then
+            for _, pat in ipairs(patterns) do
+                if combined:find(pat) then
+                    table.insert(targets, obj)
+                    break
+                end
+            end
+        end
+    end
+    for _, prompt in ipairs(targets) do
+        if not IsRunning then break end
+        local part = prompt.Parent
+        if not part or not part:IsA("BasePart") then continue end
+        root = GetRoot()
+        if not root then break end
+        if (root.Position - part.Position).Magnitude < 300 then
+            GroundRunTo(part.Position, 3.0, 3.5)
+            task.wait(0.15)
+            pcall(function()
+                if prompt:IsA("ProximityPrompt") then
+                    if fireproximityprompt then fireproximityprompt(prompt)
+                    else prompt:InputHoldBegin() task.wait(0.1) prompt:InputHoldEnd() end
+                elseif prompt:IsA("ClickDetector") then
+                    if fireclickdetector then fireclickdetector(prompt) end
+                end
+            end)
+            task.wait(0.3)
+        end
+    end
+end
+
 task.spawn(function()
     while IsRunning do
         if Flags.AutoUpgradeRecycler and not IsInBattle() then
             pcall(function()
                 ClickGuiByPattern("upgrade recycler")
                 Trigger3DUpgrade("recycler")
+                WalkAndFireAllPrompts({"recycler", "upgrade recycler"})
             end)
         end
         if Flags.AutoUpgradeCoop and not IsInBattle() then
             pcall(function()
                 ClickGuiByPattern("upgrade coop")
                 Trigger3DUpgrade("coop")
+                WalkAndFireAllPrompts({"coop", "upgrade coop"})
             end)
         end
         if Flags.AutoUpgradeFeeder and not IsInBattle() then
             pcall(function()
                 ClickGuiByPattern("upgrade feeder")
                 Trigger3DUpgrade("feeder")
+                WalkAndFireAllPrompts({"upgrade feeder", "feeder upgrade", "feeder"})
             end)
         end
         if Flags.AutoBuyFeeders and not IsInBattle() then
             pcall(function()
                 ClickGuiByPattern("buy feeder")
                 Trigger3DUpgrade("buy feeder")
+                WalkAndFireAllPrompts({"buy feeder", "buy feed", "purchase feeder", "feeder"})
             end)
         end
-        task.wait(1.5)
+        task.wait(2.0)
     end
 end)
 
