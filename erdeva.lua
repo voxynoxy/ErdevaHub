@@ -306,7 +306,6 @@ end
 
 local collectedScraps = 0
 local BlacklistedScraps = {}
-local lastUpgradeAttemptTime = 0
 
 task.spawn(function()
     while IsRunning do
@@ -382,22 +381,6 @@ task.spawn(function()
 
             local cap = tonumber(Flags.ScrapCapacity) or 20
             local recyclerPos = GetRecyclerPos()
-
-            if (tick() - lastUpgradeAttemptTime > 15.0) then
-                lastUpgradeAttemptTime = tick()
-                if (Flags.AutoBuyFeeders or Flags.AutoRebirth) and FindPadByKeyword("buy feeder") then
-                    ExecutePadAction("buy feeder", "buy feeder", "buy feeder")
-                end
-                if Flags.AutoUpgradeFeeder and FindPadByKeyword("upgrade feeder") then
-                    ExecutePadAction("upgrade feeder", "upgrade feeder", "feeder")
-                end
-                if Flags.AutoUpgradeRecycler and FindPadByKeyword("upgrade recycler") then
-                    ExecutePadAction("upgrade recycler", "upgrade recycler", "recycler")
-                end
-                if Flags.AutoUpgradeCoop and FindPadByKeyword("upgrade coop") then
-                    ExecutePadAction("upgrade coop", "upgrade coop", "coop")
-                end
-            end
 
             if Flags.AutoGrabScraps and (collectedScraps < cap) then
                 local best, bestDist = nil, 9999
