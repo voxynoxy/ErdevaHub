@@ -2,8 +2,15 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local VirtualUser = game:GetService("VirtualUser")
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
 
 pcall(function()
     if CoreGui:FindFirstChild("ERDEVA_HUB") then
@@ -11,7 +18,7 @@ pcall(function()
     end
 end)
 
-local Camera = workspace.CurrentCamera
+local Camera = Workspace.CurrentCamera
 local Viewport = Camera.ViewportSize
 
 local isSmallScreen = Viewport.X < 600
@@ -36,6 +43,7 @@ local function Tween(obj, props, dur)
     TweenService:Create(obj, TweenInfo.new(dur or 0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props):Play()
 end
 
+-- ==================== UI SETUP ====================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "ERDEVA_HUB"
 ScreenGui.ResetOnSpawn = false
@@ -160,11 +168,6 @@ TabBarLine.BackgroundColor3 = THEME.Border
 TabBarLine.BorderSizePixel = 0
 TabBarLine.Parent = TabBar
 
-local TabBarLayout = Instance.new("UIListLayout")
-TabBarLayout.FillDirection = Enum.FillDirection.Horizontal
-TabBarLayout.SortOrder = Enum.SortOrder.LayoutOrder
-TabBarLayout.Parent = TabBar
-
 -- CONTENT SCROLL AREA
 local ContentArea = Instance.new("ScrollingFrame")
 ContentArea.Name = "ContentArea"
@@ -185,7 +188,7 @@ ContentPad.PaddingRight = UDim.new(0, 8)
 ContentPad.PaddingBottom = UDim.new(0, 12)
 ContentPad.Parent = ContentArea
 
--- TAB SYSTEM
+-- ==================== TAB SYSTEM ====================
 local Tabs = {}
 local TabBtns = {}
 local currentTab = nil
@@ -269,7 +272,7 @@ for idx, name in ipairs(TAB_NAMES) do
     end)
 end
 
--- CARD BUILDER
+-- ==================== UI BUILDERS ====================
 local function CreateCard(parentPage, title)
     local card = Instance.new("Frame")
     card.Size = UDim2.new(1, 0, 0, 0)
@@ -336,7 +339,6 @@ local function CreateCard(parentPage, title)
     return container
 end
 
--- TOGGLE
 local function CreateToggle(parentContainer, labelText, defaultState, callback)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, 0, 0, 28)
@@ -402,7 +404,6 @@ local function CreateToggle(parentContainer, labelText, defaultState, callback)
     return toggleBtn
 end
 
--- SLIDER
 local function CreateSlider(parentContainer, labelText, minVal, maxVal, defaultVal, callback)
     local wrapper = Instance.new("Frame")
     wrapper.Size = UDim2.new(1, 0, 0, 36)
@@ -498,29 +499,365 @@ local function CreateSlider(parentContainer, labelText, minVal, maxVal, defaultV
     end)
 end
 
--- 1. FARM
+-- ==================== FARM FEATURES ====================
+local farmState = {
+    autoOpenEggs = false,
+    autoFuseChickens = false,
+    autoGrabScraps = false,
+    autoRecycleScrap = false,
+    autoUpgradeRecycler = false,
+    recycleThreshold = 10
+}
+
+-- Find relevant game objects
+local function findEggs()
+    local eggs = {}
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj.Name and (obj.Name:lower():find("egg") or obj.Name:lower():find("egg%_")) then
+            if obj:IsA("BasePart") or obj:IsA("Model") then
+                table.insert(eggs, obj)
+            end
+        end
+    end
+    return eggs
+end
+
+local function findChickens()
+    local chickens = {}
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj.Name and (obj.Name:lower():find("chicken") or obj.Name:lower():find("hen") or obj.Name:lower():find("rooster")) then
+            if obj:IsA("Model") then
+                table.insert(chickens, obj)
+            end
+        end
+    end
+    return chickens
+end
+
+local function findScraps()
+    local scraps = {}
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj.Name and (obj.Name:lower():find("scrap") or obj.Name:lower():find("trash") or obj.Name:lower():find("debris")) then
+            if obj:IsA("BasePart") then
+                table.insert(scraps, obj)
+            end
+        end
+    end
+    return scraps
+end
+
+local function findRecycler()
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj.Name and (obj.Name:lower():find("recycler") or obj.Name:lower():find("recycle")) then
+            if obj:IsA("Model") or obj:IsA("BasePart") then
+                return obj
+            end
+        end
+    end
+    return nil
+end
+
+local function findFeeder()
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj.Name and obj.Name:lower():find("feeder") then
+            if obj:IsA("Model") or obj:IsA("BasePart") then
+                return obj
+            end
+        end
+    end
+    return nil
+end
+
+local function findCoop()
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj.Name and obj.Name:lower():find("coop") then
+            if obj:IsA("Model") or obj:IsA("BasePart") then
+                return obj
+            end
+        end
+    end
+    return nil
+end
+
+-- Auto Open Eggs
+local function autoOpenEggs()
+    if not farmState.autoOpenEggs then return end
+    
+    local eggs = findEggs()
+    for _, egg in pairs(eggs) do
+        if egg:IsA("Model") then
+            local clickDetector = egg:FindFirstChild("ClickDetector")
+            if clickDetector then
+                fireclickdetector(clickDetector)
+                task.wait(0.2)
+            end
+        elseif egg:IsA("BasePart") then
+            local clickDetector = egg:FindFirstChild("ClickDetector")
+            if clickDetector then
+                fireclickdetector(clickDetector)
+                task.wait(0.2)
+            end
+        end
+    end
+end
+
+-- Auto Fuse Chickens
+local function autoFuseChickens()
+    if not farmState.autoFuseChickens then return end
+    
+    local chickens = findChickens()
+    for _, chicken in pairs(chickens) do
+        -- Look for fuse button or click detector on chickens
+        local fuseBtn = chicken:FindFirstChild("FuseButton")
+        if fuseBtn and fuseBtn:IsA("ClickDetector") then
+            fireclickdetector(fuseBtn)
+            task.wait(0.3)
+        end
+    end
+end
+
+-- Auto Grab Scraps
+local function autoGrabScraps()
+    if not farmState.autoGrabScraps then return end
+    
+    local scraps = findScraps()
+    for _, scrap in pairs(scraps) do
+        if scrap:IsA("BasePart") then
+            local clickDetector = scrap:FindFirstChild("ClickDetector")
+            if clickDetector then
+                fireclickdetector(clickDetector)
+                task.wait(0.15)
+            end
+        end
+    end
+end
+
+-- Auto Recycle Scrap
+local function autoRecycleScrap()
+    if not farmState.autoRecycleScrap then return end
+    
+    local recycler = findRecycler()
+    if recycler then
+        local clickDetector = recycler:FindFirstChild("ClickDetector")
+        if clickDetector then
+            fireclickdetector(clickDetector)
+            task.wait(0.3)
+        end
+    end
+end
+
+-- Auto Upgrade Recycler
+local function autoUpgradeRecycler()
+    if not farmState.autoUpgradeRecycler then return end
+    
+    local recycler = findRecycler()
+    if recycler then
+        local upgradeBtn = recycler:FindFirstChild("UpgradeButton")
+        if upgradeBtn and upgradeBtn:IsA("ClickDetector") then
+            fireclickdetector(upgradeBtn)
+            task.wait(0.5)
+        end
+    end
+end
+
+-- ==================== PLOT FEATURES ====================
+local plotState = {
+    autoRebirth = false,
+    autoUpgradeCoop = false,
+    autoUpgradeFeeder = false,
+    autoBuyFeeders = false
+}
+
+-- Auto Rebirth
+local function autoRebirth()
+    if not plotState.autoRebirth then return end
+    
+    -- Look for rebirth button or trigger
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj.Name and (obj.Name:lower():find("rebirth") or obj.Name:lower():find("prestige")) then
+            local clickDetector = obj:FindFirstChild("ClickDetector")
+            if clickDetector then
+                fireclickdetector(clickDetector)
+                task.wait(0.5)
+                break
+            end
+        end
+    end
+end
+
+-- Auto Upgrade Coop
+local function autoUpgradeCoop()
+    if not plotState.autoUpgradeCoop then return end
+    
+    local coop = findCoop()
+    if coop then
+        local upgradeBtn = coop:FindFirstChild("UpgradeButton")
+        if upgradeBtn and upgradeBtn:IsA("ClickDetector") then
+            fireclickdetector(upgradeBtn)
+            task.wait(0.3)
+        end
+    end
+end
+
+-- Auto Upgrade Feeder
+local function autoUpgradeFeeder()
+    if not plotState.autoUpgradeFeeder then return end
+    
+    local feeder = findFeeder()
+    if feeder then
+        local upgradeBtn = feeder:FindFirstChild("UpgradeButton")
+        if upgradeBtn and upgradeBtn:IsA("ClickDetector") then
+            fireclickdetector(upgradeBtn)
+            task.wait(0.3)
+        end
+    end
+end
+
+-- Auto Buy Feeders
+local function autoBuyFeeders()
+    if not plotState.autoBuyFeeders then return end
+    
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj.Name and obj.Name:lower():find("buyfeeder") then
+            local clickDetector = obj:FindFirstChild("ClickDetector")
+            if clickDetector then
+                fireclickdetector(clickDetector)
+                task.wait(0.5)
+            end
+        end
+    end
+end
+
+-- ==================== BATTLE FEATURES ====================
+local battleState = {
+    autoStartTower = false,
+    autoNoThanks = false,
+    autoStartChaos = false
+}
+
+-- Auto Start Tower
+local function autoStartTower()
+    if not battleState.autoStartTower then return end
+    
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj.Name and (obj.Name:lower():find("tower") and obj.Name:lower():find("start")) then
+            local clickDetector = obj:FindFirstChild("ClickDetector")
+            if clickDetector then
+                fireclickdetector(clickDetector)
+                task.wait(0.5)
+                break
+            end
+        end
+    end
+end
+
+-- Auto No Thanks
+local function autoNoThanks()
+    if not battleState.autoNoThanks then return end
+    
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj.Name and obj.Name:lower():find("nothanks") then
+            local clickDetector = obj:FindFirstChild("ClickDetector")
+            if clickDetector then
+                fireclickdetector(clickDetector)
+                task.wait(0.3)
+            end
+        end
+    end
+end
+
+-- Auto Start Chaos
+local function autoStartChaos()
+    if not battleState.autoStartChaos then return end
+    
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj.Name and (obj.Name:lower():find("chaos") and obj.Name:lower():find("start")) then
+            local clickDetector = obj:FindFirstChild("ClickDetector")
+            if clickDetector then
+                fireclickdetector(clickDetector)
+                task.wait(0.5)
+                break
+            end
+        end
+    end
+end
+
+-- ==================== MAIN LOOP ====================
+local function mainLoop()
+    while ScreenGui.Parent do
+        -- Farm features
+        pcall(autoOpenEggs)
+        pcall(autoFuseChickens)
+        pcall(autoGrabScraps)
+        pcall(autoRecycleScrap)
+        pcall(autoUpgradeRecycler)
+        
+        -- Plot features
+        pcall(autoRebirth)
+        pcall(autoUpgradeCoop)
+        pcall(autoUpgradeFeeder)
+        pcall(autoBuyFeeders)
+        
+        -- Battle features
+        pcall(autoStartTower)
+        pcall(autoNoThanks)
+        pcall(autoStartChaos)
+        
+        task.wait(0.5) -- Loop every 0.5 seconds
+    end
+end
+
+-- ==================== POPULATE UI ====================
+
+-- [1] FARM TAB
 local farmCard = CreateCard(Tabs["Farm"], "Auto Farm")
-CreateToggle(farmCard, "Auto Open Eggs", false)
-CreateToggle(farmCard, "Auto Fuse Chickens", false)
-CreateToggle(farmCard, "Auto Grab Scraps", false)
-CreateToggle(farmCard, "Auto Recycle Scrap", false)
-CreateToggle(farmCard, "Auto Upgrade Recycler", false)
-CreateSlider(farmCard, "Recycle threshold", 1, 20, 10)
+CreateToggle(farmCard, "Auto Open Eggs", false, function(state)
+    farmState.autoOpenEggs = state
+end)
+CreateToggle(farmCard, "Auto Fuse Chickens", false, function(state)
+    farmState.autoFuseChickens = state
+end)
+CreateToggle(farmCard, "Auto Grab Scraps", false, function(state)
+    farmState.autoGrabScraps = state
+end)
+CreateToggle(farmCard, "Auto Recycle Scrap", false, function(state)
+    farmState.autoRecycleScrap = state
+end)
+CreateToggle(farmCard, "Auto Upgrade Recycler", false, function(state)
+    farmState.autoUpgradeRecycler = state
+end)
+CreateSlider(farmCard, "Recycle threshold", 1, 20, 10, function(value)
+    farmState.recycleThreshold = value
+end)
 
--- 2. PLOT
+-- [2] PLOT TAB
 local plotCard = CreateCard(Tabs["Plot"], "Plot Settings")
-CreateToggle(plotCard, "Auto Rebirth", false)
-CreateToggle(plotCard, "Auto Upgrade Coop", false)
-CreateToggle(plotCard, "Auto Upgrade Feeder", false)
-CreateToggle(plotCard, "Auto Buy Feeders", false)
+CreateToggle(plotCard, "Auto Rebirth", false, function(state)
+    plotState.autoRebirth = state
+end)
+CreateToggle(plotCard, "Auto Upgrade Coop", false, function(state)
+    plotState.autoUpgradeCoop = state
+end)
+CreateToggle(plotCard, "Auto Upgrade Feeder", false, function(state)
+    plotState.autoUpgradeFeeder = state
+end)
+CreateToggle(plotCard, "Auto Buy Feeders", false, function(state)
+    plotState.autoBuyFeeders = state
+end)
 
--- 3. BATTLE
+-- [3] BATTLE TAB
 local battleCard = CreateCard(Tabs["Battle"], "Battle System")
-CreateToggle(battleCard, "Auto Start Tower", false)
-CreateToggle(battleCard, "Auto No Thanks", false)
-CreateToggle(battleCard, "Auto Start Chaos", false)
+CreateToggle(battleCard, "Auto Start Tower", false, function(state)
+    battleState.autoStartTower = state
+end)
+CreateToggle(battleCard, "Auto No Thanks", false, function(state)
+    battleState.autoNoThanks = state
+end)
+CreateToggle(battleCard, "Auto Start Chaos", false, function(state)
+    battleState.autoStartChaos = state
+end)
 
--- 4. INFO
+-- [4] INFO TAB
 local infoCard = CreateCard(Tabs["Info"], "Information")
 local function AddInfoRow(k, v)
     local r = Instance.new("Frame")
@@ -540,51 +877,4 @@ local function AddInfoRow(k, v)
 
     local l2 = Instance.new("TextLabel")
     l2.Size = UDim2.new(0.5, 0, 1, 0)
-    l2.Position = UDim2.new(0.5, 0, 0, 0)
-    l2.BackgroundTransparency = 1
-    l2.Text = v
-    l2.TextColor3 = THEME.Red
-    l2.TextSize = 11
-    l2.Font = Enum.Font.GothamBold
-    l2.TextXAlignment = Enum.TextXAlignment.Right
-    l2.Parent = r
-end
-
-AddInfoRow("Hub", "ERDEVA HUB")
-AddInfoRow("Game", "Chicken Farm")
-AddInfoRow("Player", player.DisplayName)
-AddInfoRow("Status", "Operational")
-
--- DRAG
-local isDragging = false
-local dragStartPos = nil
-local startFramePos = nil
-
-TopBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        isDragging = true
-        dragStartPos = input.Position
-        startFramePos = Main.Position
-
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                isDragging = false
-            end
-        end)
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if isDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = input.Position - dragStartPos
-        Main.Position = UDim2.new(
-            startFramePos.X.Scale,
-            startFramePos.X.Offset + delta.X,
-            startFramePos.Y.Scale,
-            startFramePos.Y.Offset + delta.Y
-        )
-    end
-end)
-
-SwitchTab("Farm")
-print("[ERDEVA HUB] Loaded successfully!")
+    l2.Position = UDim2.new(0.5
