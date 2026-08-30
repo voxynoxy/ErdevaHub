@@ -86,12 +86,13 @@ local function GroundRunTo(targetPos, maxWait, stopDistance)
 
     local stopDist = stopDistance or 2.2
     local start = tick()
-    local timeout = maxWait or 3.0
+    local timeout = maxWait or 3.5
 
     while IsRunning and GetFlatDistance(root.Position, targetPos) > stopDist and (tick() - start < timeout) do
         local dir = Vector3.new(targetPos.X - root.Position.X, 0, targetPos.Z - root.Position.Z).Unit
-        root.AssemblyLinearVelocity = Vector3.new(dir.X * 22, root.AssemblyLinearVelocity.Y, dir.Z * 22)
+        root.AssemblyLinearVelocity = Vector3.new(dir.X * 24, root.AssemblyLinearVelocity.Y, dir.Z * 24)
         root.CFrame = CFrame.new(root.Position, Vector3.new(targetPos.X, root.Position.Y, targetPos.Z))
+        hum:MoveTo(targetPos)
         hum:ChangeState(Enum.HumanoidStateType.Running)
         task.wait(0.02)
     end
@@ -101,10 +102,11 @@ end
 
 local mySavedPlot = nil
 local mySavedRecycler = nil
+local mySavedArenaCenter = nil
 
-local function DetectBase()
-    if mySavedPlot and mySavedRecycler and mySavedRecycler.Parent then
-        return mySavedPlot, mySavedRecycler
+local function DetectBaseAndArena()
+    if mySavedPlot and mySavedRecycler and mySavedArenaCenter then
+        return mySavedPlot, mySavedRecycler, mySavedArenaCenter
     end
 
     local root = GetRoot()
@@ -138,19 +140,22 @@ local function DetectBase()
         end
     end
 
-    if mySavedPlot then
-        for _, child in ipairs(mySavedPlot:GetDescendants()) do
-            local n = child.Name:lower()
-            if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
-                local part = child:IsA("BasePart") and child or child:FindFirstChildWhichIsA("BasePart")
-                if part then mySavedRecycler = part break end
-            end
+    local searchScope = mySavedPlot or workspace
+
+    for _, child in ipairs(searchScope:GetDescendants()) do
+        local n = child.Name:lower()
+        if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
+            local part = child:IsA("BasePart") and child or child:FindFirstChildWhichIsA("BasePart")
+            if part then mySavedRecycler = part end
+        end
+        if (n:find("dirt") or n:find("coop") or n:find("arena") or n:find("circle") or n:find("floor")) and child:IsA("BasePart") and child.Size.X > 15 then
+            mySavedArenaCenter = child.Position
         end
     end
 
     if not mySavedRecycler and root then
         local closest = nil
-        local minD = 65
+        local minD = 120
         for _, obj in ipairs(workspace:GetDescendants()) do
             local n = obj.Name:lower()
             if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
@@ -167,7 +172,7 @@ local function DetectBase()
         mySavedRecycler = closest
     end
 
-    return mySavedPlot, mySavedRecycler
+    return mySavedPlot, mySavedRecycler, mySavedArenaCenter
 end
 
 local function ClickButton(btn)
@@ -203,21 +208,32 @@ local function ClickGuiByPattern(pattern)
 end
 
 local function Trigger3DUpgrade(pattern)
-    local plot = mySavedPlot or workspace
     pattern = pattern:lower()
-    for _, obj in ipairs(plot:GetDescendants()) do
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        local matches = false
         local n = obj.Name:lower()
-        local matches = n:find(pattern)
-        if not matches and (obj:IsA("TextLabel") or obj:IsA("BillboardGui")) then
-            local t = obj:IsA("TextLabel") and obj.Text:lower() or ""
-            matches = t:find(pattern)
+        if n:find(pattern) then matches = true end
+
+        if not matches and (obj:IsA("TextLabel") or obj:IsA("BillboardGui") or obj:IsA("SurfaceGui")) then
+            local t = (obj:IsA("TextLabel") and obj.Text:lower() or "") .. " " .. obj.Name:lower()
+            if t:find(pattern) then matches = true end
         end
+
         if matches then
-            local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
-            if part then
+            local root = GetRoot()
+            local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart") or (obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent)
+            if part and root and (root.Position - part.Position).Magnitude < 120 then
                 local prompt = part:FindFirstChildOfClass("ProximityPrompt") or obj:FindFirstChildOfClass("ProximityPrompt")
                 if prompt then
-                    pcall(function() prompt:InputHoldBegin() task.wait(0.05) prompt:InputHoldEnd() end)
+                    pcall(function()
+                        if fireproximityprompt then
+                            fireproximityprompt(prompt)
+                        else
+                            prompt:InputHoldBegin()
+                            task.wait(0.05)
+                            prompt:InputHoldEnd()
+                        end
+                    end)
                 end
                 local click = part:FindFirstChildOfClass("ClickDetector") or obj:FindFirstChildOfClass("ClickDetector")
                 if click and fireclickdetector then
@@ -272,7 +288,8 @@ local function IsGroundScrap(obj)
     end
     local n = obj.Name:lower()
     local pn = obj.Parent.Name:lower()
-    if (n:find("scrap") or n:find("trash") or n:find("drop") or pn:find("scrap") or pn:find("trash")) and not n:find("recycler") and not n:find("feeder") and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
+    local ppn = obj.Parent.Parent and obj.Parent.Parent.Name:lower() or ""
+    if (n:find("scrap") or n:find("trash") or n:find("drop") or n:find("plate") or n:find("poop") or pn:find("scrap") or pn:find("trash") or pn:find("drop") or ppn:find("scrap") or ppn:find("drop")) and not n:find("recycler") and not n:find("feeder") and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
         return true
     end
     return false
@@ -290,7 +307,7 @@ task.spawn(function()
                 if not root or not hum then task.wait(0.1) return end
 
                 local targetCapacity = tonumber(Flags.ScrapCapacity) or 20
-                local plot, myRecycler = DetectBase()
+                local plot, myRecycler, arenaCenter = DetectBaseAndArena()
 
                 if Flags.AutoRecycleScrap and myRecycler and collectedScraps >= targetCapacity then
                     GroundRunTo(myRecycler.Position, 4.0, 2.5)
@@ -306,7 +323,7 @@ task.spawn(function()
                         if not Flags.AutoGrabScraps or not IsRunning then break end
                         if not BlacklistedScraps[obj] and IsGroundScrap(obj) then
                             local dist = GetFlatDistance(root.Position, obj.Position)
-                            if dist < 85 and dist < minDistance then
+                            if dist < 300 and dist < minDistance then
                                 minDistance = dist
                                 closestPart = obj
                             end
@@ -314,18 +331,22 @@ task.spawn(function()
                     end
 
                     if closestPart and collectedScraps < targetCapacity then
-                        GroundRunTo(closestPart.Position, 1.6, 2.2)
+                        GroundRunTo(closestPart.Position, 2.0, 2.2)
                         BlacklistedScraps[closestPart] = true
                         collectedScraps = collectedScraps + 1
                     else
-                        root.AssemblyLinearVelocity = Vector3.zero
+                        if arenaCenter and GetFlatDistance(root.Position, arenaCenter) > 25 then
+                            GroundRunTo(arenaCenter, 2.5, 6.0)
+                        else
+                            root.AssemblyLinearVelocity = Vector3.zero
+                        end
                         BlacklistedScraps = {}
-                        task.wait(0.08)
+                        task.wait(0.1)
                     end
                 end
             end)
         else
-            task.wait(0.2)
+            task.wait(0.25)
         end
     end
 end)
@@ -419,6 +440,7 @@ task.spawn(function()
                         task.wait(3.0)
                         mySavedPlot = nil
                         mySavedRecycler = nil
+                        mySavedArenaCenter = nil
                         collectedScraps = 0
                         BlacklistedScraps = {}
                         isTowerBusy = false
