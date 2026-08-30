@@ -1,13 +1,16 @@
 --[[
-    ERDEVA HUB - Strategic Auto-Rebirth & Complete Workflow Engine
-    Workflow:
-    1. Incubator & Feeder Investment
-    2. Maximize Best Chicken & Upgrade Feeders
-    3. Auto-Dump Cash into Upgrades before reset
-    4. Auto-Climb Tower until Rebirth requirement met
-    5. Auto-Fuse pending chickens for bonus multiplier
-    6. Execute Rebirth Confirmation
-    7. Clean post-reset state & restart loop
+    ERDEVA HUB - Smart Master-Sync Automation Engine
+    - Master Auto-Rebirth: 1-Click activates full AFK cycle:
+      * Auto Grab Scraps (Capacity: 20)
+      * Auto Recycle Scrap
+      * Auto Fuse Chickens
+      * Auto Upgrade Feeder & Coop
+      * Auto Start Tower
+      * Auto No Thanks
+    - Raycast wall/fence detection with jump momentum
+    - 100% Native Roblox physics (No exploit function hooks)
+    - Plot-Locked Recycler
+    - Clean Shutdown on GUI Close [X]
 ]]
 
 local Players = game:GetService("Players")
@@ -58,6 +61,8 @@ local Flags = {
     AutoNoThanks = false,
     AutoStartChaos = false
 }
+
+local ToggleUpdaters = {}
 
 --==================================================
 -- NAVIGATION & RAYCAST FENCE-VAULTING
@@ -260,6 +265,7 @@ task.spawn(function()
 
                 local targetCapacity = Flags.ScrapCapacity or Flags.RecycleThreshold or 20
 
+                -- 1. Deposit into OWN Recycler when reaching capacity
                 if Flags.AutoRecycleScrap and collectedCount >= targetCapacity then
                     local recPart, recModel = FindMyRecycler()
                     if recPart then
@@ -270,6 +276,7 @@ task.spawn(function()
                     end
                 end
 
+                -- 2. Scan and walk to ground scraps inside coop
                 local availableScraps = {}
                 for _, obj in ipairs(workspace:GetDescendants()) do
                     if not Flags.AutoGrabScraps or not IsRunning then break end
@@ -687,6 +694,13 @@ local function MakeTab(name, order)
     return page
 end
 
+local function SetToggleState(flagKey, targetState)
+    Flags[flagKey] = targetState
+    if ToggleUpdaters[flagKey] then
+        ToggleUpdaters[flagKey](targetState)
+    end
+end
+
 local function AddToggle(parent, text, flagKey)
     local f = Instance.new("Frame", parent)
     f.Size = UDim2.new(1, 0, 0, 30)
@@ -716,11 +730,26 @@ local function AddToggle(parent, text, flagKey)
     k.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
     Instance.new("UICorner", k).CornerRadius = UDim.new(1, 0)
 
-    b.MouseButton1Click:Connect(function()
-        Flags[flagKey] = not Flags[flagKey]
-        local on = Flags[flagKey]
+    local function updateVisual(on)
         tw(b, {BackgroundColor3 = (on and C.Red or Color3.fromRGB(50, 50, 50))})
         tw(k, {Position = (on and UDim2.fromOffset(20, 2) or UDim2.fromOffset(2, 2))})
+    end
+
+    ToggleUpdaters[flagKey] = updateVisual
+
+    b.MouseButton1Click:Connect(function()
+        local newState = not Flags[flagKey]
+        SetToggleState(flagKey, newState)
+
+        if flagKey == "AutoRebirth" then
+            SetToggleState("AutoGrabScraps", newState)
+            SetToggleState("AutoRecycleScrap", newState)
+            SetToggleState("AutoFuseChickens", newState)
+            SetToggleState("AutoUpgradeFeeder", newState)
+            SetToggleState("AutoUpgradeCoop", newState)
+            SetToggleState("AutoStartTower", newState)
+            SetToggleState("AutoNoThanks", newState)
+        end
     end)
 end
 
@@ -796,7 +825,7 @@ AddToggle(FarmPage, "Auto Upgrade Recycler", "AutoUpgradeRecycler")
 AddSlider(FarmPage, "Scrap Capacity", 50, 20, "ScrapCapacity")
 
 -- 2. Plot
-AddToggle(PlotPage, "Auto Rebirth", "AutoRebirth")
+AddToggle(PlotPage, "Auto Rebirth (Master)", "AutoRebirth")
 AddToggle(PlotPage, "Auto Upgrade Coop", "AutoUpgradeCoop")
 AddToggle(PlotPage, "Auto Upgrade Feeder", "AutoUpgradeFeeder")
 AddToggle(PlotPage, "Auto Buy Feeders", "AutoBuyFeeders")
@@ -839,4 +868,4 @@ AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
 SetTab("Farm")
-print("[ERDEVA HUB] 7-Step Strategic Rebirth Engine Ready.")
+print("[ERDEVA HUB] Auto-Rebirth Master Sync Ready.")
