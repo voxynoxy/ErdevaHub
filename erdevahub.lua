@@ -1,16 +1,17 @@
 --[[
-    ERDEVA HUB - Stepped Noclip Navigation & Guaranteed Recycler Delivery
-    - Character-Level Noclip (Stepped hook):
-      Character body glides directly through fences/walls without any collision hang.
-    - Guaranteed Recycler Deposit:
-      Delivers whenever capacity is reached, or when no scraps left, or on a 10s cycle.
+    ERDEVA HUB - Strict Scrap Capacity & Perfect Rebirth Progression
+    - Strict Capacity Farming:
+      Character stays inside coop and collects until EXACTLY target capacity (e.g. 20) is reached.
+      Never rushes to Recycler prematurely!
+    - Guaranteed Recycler Deposit when capacity is reached.
     - Master Auto-Rebirth: 1-Click activates full AFK cycle:
-      * Auto Grab Scraps (Capacity: 20)
+      * Auto Grab Scraps (Strict Capacity: 20)
       * Auto Recycle Scrap
       * Auto Fuse Chickens
       * Auto Upgrade Feeder & Coop
       * Auto Start Tower
       * Auto No Thanks
+    - Character Noclip (Stepped hook) for smooth fence traversal.
     - Clean Shutdown on GUI Close [X]
 ]]
 
@@ -97,7 +98,6 @@ RunService.Stepped:Connect(function()
     end
 end)
 
--- Walk directly to position
 local function WalkTo(targetPos, maxWait)
     if not IsRunning then return false end
     local hum = GetHumanoid()
@@ -118,7 +118,6 @@ local function WalkTo(targetPos, maxWait)
     return (root.Position - targetPos).Magnitude <= 3.0
 end
 
--- Find player's plot
 local myPlotCache = nil
 local function GetMyPlot()
     if myPlotCache and myPlotCache.Parent then return myPlotCache end
@@ -156,7 +155,6 @@ local function GetMyPlot()
     return nil
 end
 
--- Find Recycler in Player's plot
 local function FindMyRecycler()
     local root = GetRoot()
     if not root then return nil, nil end
@@ -246,12 +244,11 @@ local function IsInBattle()
 end
 
 --==================================================
--- 1. ROBUST HARVEST & RECYCLER ENGINE
+-- 1. STRICT CAPACITY HARVEST & RECYCLER ENGINE
 --==================================================
 
 local collectedCount = 0
 local ProcessedScraps = {}
-local lastRecycleTime = tick()
 
 task.spawn(function()
     while IsRunning do
@@ -262,7 +259,19 @@ task.spawn(function()
 
                 local targetCapacity = Flags.ScrapCapacity or Flags.RecycleThreshold or 20
 
-                -- Scan ground scraps in coop
+                -- STRICT CAPACITY CHECK: Only deposit when capacity is 100% reached
+                if Flags.AutoRecycleScrap and collectedCount >= targetCapacity then
+                    local recPart, recModel = FindMyRecycler()
+                    if recPart then
+                        WalkTo(recPart.Position, 3.5)
+                        task.wait(1.5)
+                        collectedCount = 0
+                        ProcessedScraps = {}
+                        task.wait(0.5)
+                    end
+                end
+
+                -- Scan for scraps inside coop
                 local availableScraps = {}
                 for _, obj in ipairs(workspace:GetDescendants()) do
                     if not Flags.AutoGrabScraps or not IsRunning then break end
@@ -283,21 +292,8 @@ task.spawn(function()
 
                 table.sort(availableScraps, function(a, b) return a.Dist < b.Dist end)
 
-                -- Check if ready to deposit: capacity reached, or time elapsed (>10s with scraps), or 0 scraps left
-                local shouldDeposit = Flags.AutoRecycleScrap and (collectedCount >= targetCapacity or (#availableScraps == 0 and collectedCount > 0) or (tick() - lastRecycleTime > 12 and collectedCount > 0))
-
-                if shouldDeposit then
-                    local recPart, recModel = FindMyRecycler()
-                    if recPart then
-                        WalkTo(recPart.Position, 3.5)
-                        task.wait(1.5) -- stand inside recycler pad to convert
-                        collectedCount = 0
-                        ProcessedScraps = {}
-                        lastRecycleTime = tick()
-                    end
-                elseif #availableScraps > 0 and collectedCount < targetCapacity then
+                if #availableScraps > 0 and collectedCount < targetCapacity then
                     local target = availableScraps[1]
-                    -- Walk through fence directly over scrap
                     WalkTo(target.Part.Position, 2.5)
 
                     ProcessedScraps[target.Obj] = true
@@ -306,7 +302,7 @@ task.spawn(function()
                     task.wait(0.08)
                 else
                     ProcessedScraps = {}
-                    task.wait(0.35)
+                    task.wait(0.6)
                 end
             end)
         else
@@ -856,4 +852,4 @@ AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
 SetTab("Farm")
-print("[ERDEVA HUB] Guaranteed Recycler & Stepped Noclip Active.")
+print("[ERDEVA HUB] Strict Scrap Capacity Loop Active.")
