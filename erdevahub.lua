@@ -214,10 +214,11 @@ end
 
 local collectedScraps = 0
 local BlacklistedScraps = {}
+local IsBusy = false  -- ketika true, loop scrap berhenti bergerak
 
 task.spawn(function()
     while IsRunning do
-        if Flags.AutoGrabScraps and not IsInBattle() then
+        if Flags.AutoGrabScraps and not IsInBattle() and not IsBusy then
             pcall(function()
                 local root = GetRoot()
                 local hum = GetHumanoid()
@@ -392,13 +393,20 @@ end)
 local function WalkAndFireAllPrompts(patterns)
     local root = GetRoot()
     if not root then return end
+
     local targets = {}
     for _, obj in ipairs(workspace:GetDescendants()) do
         local combined = ""
         if obj:IsA("ProximityPrompt") then
-            combined = obj.ActionText:lower() .. " " .. obj.ObjectText:lower() .. " " .. (obj.Parent and obj.Parent.Name:lower() or "")
+            local actionText = obj.ActionText:lower()
+            local objectText = obj.ObjectText:lower()
+            local parentName = (obj.Parent and obj.Parent.Name:lower()) or ""
+            local grandName = (obj.Parent and obj.Parent.Parent and obj.Parent.Parent.Name:lower()) or ""
+            combined = actionText .. " " .. objectText .. " " .. parentName .. " " .. grandName
         elseif obj:IsA("ClickDetector") then
-            combined = (obj.Parent and obj.Parent.Name:lower() or "") .. " " .. ((obj.Parent and obj.Parent.Parent) and obj.Parent.Parent.Name:lower() or "")
+            local parentName = (obj.Parent and obj.Parent.Name:lower()) or ""
+            local grandName = (obj.Parent and obj.Parent.Parent and obj.Parent.Parent.Name:lower()) or ""
+            combined = parentName .. " " .. grandName
         end
         if combined ~= "" then
             for _, pat in ipairs(patterns) do
@@ -409,26 +417,62 @@ local function WalkAndFireAllPrompts(patterns)
             end
         end
     end
+
+    if #targets == 0 then return end
+
+    -- Pause loop scrap agar tidak berebut kontrol karakter
+    IsBusy = true
+    local savedPos = root.Position
+
     for _, prompt in ipairs(targets) do
         if not IsRunning then break end
         local part = prompt.Parent
         if not part or not part:IsA("BasePart") then continue end
         root = GetRoot()
         if not root then break end
-        if (root.Position - part.Position).Magnitude < 300 then
-            GroundRunTo(part.Position, 3.0, 3.5)
-            task.wait(0.15)
+        local dist = (root.Position - part.Position).Magnitude
+        if dist < 400 then
+            GroundRunTo(part.Position, 4.0, 3.0)
+            task.wait(0.2)
+            -- Coba semua metode tekan [E] sampai salah satu berhasil
             pcall(function()
                 if prompt:IsA("ProximityPrompt") then
-                    if fireproximityprompt then fireproximityprompt(prompt)
-                    else prompt:InputHoldBegin() task.wait(0.1) prompt:InputHoldEnd() end
+                    -- Metode 1: fireproximityprompt (paling umum di executor)
+                    if fireproximityprompt then
+                        fireproximityprompt(prompt)
+                    end
+                    -- Metode 2: InputHoldBegin / InputHoldEnd
+                    pcall(function()
+                        prompt:InputHoldBegin()
+                        task.wait(prompt.HoldDuration + 0.05)
+                        prompt:InputHoldEnd()
+                    end)
+                    -- Metode 3: Simulasi tekan E via VirtualInputManager
+                    pcall(function()
+                        local vim = game:GetService("VirtualInputManager")
+                        vim:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                        task.wait(0.1)
+                        vim:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                    end)
+                    -- Metode 4: firesignal jika tersedia
+                    if firesignal then
+                        pcall(function() firesignal(prompt.Triggered, player) end)
+                    end
                 elseif prompt:IsA("ClickDetector") then
                     if fireclickdetector then fireclickdetector(prompt) end
+                    pcall(function() prompt.MouseClick:Fire(player) end)
                 end
             end)
-            task.wait(0.3)
+            task.wait(0.4)
         end
     end
+
+    -- Kembalikan karakter ke posisi semula (dekat arena scrap)
+    local root2 = GetRoot()
+    if root2 then
+        GroundRunTo(savedPos, 3.0, 4.0)
+    end
+    IsBusy = false
 end
 
 task.spawn(function()
