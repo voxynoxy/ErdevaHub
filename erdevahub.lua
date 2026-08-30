@@ -96,9 +96,13 @@ end
 
 local mySavedPlot = nil
 local mySavedRecyclerPos = nil
+local isManualBaseSet = false
 
 local function FindOwnRecycler()
-    if mySavedRecyclerPos then return mySavedRecyclerPos end
+    if isManualBaseSet and mySavedRecyclerPos then
+        return mySavedRecyclerPos
+    end
+
     local root = GetRoot()
 
     for _, obj in ipairs(workspace:GetDescendants()) do
@@ -127,7 +131,7 @@ local function FindOwnRecycler()
         end
     end
 
-    if root then
+    if root and not mySavedRecyclerPos then
         local candidates = {}
         for _, obj in ipairs(workspace:GetDescendants()) do
             local n = obj.Name:lower()
@@ -146,7 +150,7 @@ local function FindOwnRecycler()
         end
     end
 
-    return nil
+    return mySavedRecyclerPos
 end
 
 local function ClickButton(btn)
@@ -403,7 +407,9 @@ task.spawn(function()
 
                         task.wait(3.0)
                         mySavedPlot = nil
-                        mySavedRecyclerPos = nil
+                        if not isManualBaseSet then
+                            mySavedRecyclerPos = nil
+                        end
                         collectedScraps = 0
                         BlacklistedScraps = {}
                         isTowerBusy = false
@@ -709,14 +715,20 @@ end
 
 local function AddButton(parent, text, cb)
     local b = Instance.new("TextButton", parent)
-    b.Size = UDim2.new(1, 0, 0, 28)
-    b.BackgroundColor3 = C.Card
+    b.Size = UDim2.new(1, 0, 0, 30)
+    b.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
     b.Text = text
-    b.TextColor3 = C.Txt
+    b.TextColor3 = Color3.fromRGB(255, 255, 255)
     b.TextSize = 11
-    b.Font = Enum.Font.GothamMedium
+    b.Font = Enum.Font.GothamBold
     Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
-    b.MouseButton1Click:Connect(cb)
+    local stroke = Instance.new("UIStroke", b)
+    stroke.Color = C.Red
+    stroke.Thickness = 1
+
+    b.MouseButton1Click:Connect(function()
+        cb(b)
+    end)
 end
 
 local function AddSlider(parent, text, maxV, defV, flagKey)
@@ -791,10 +803,18 @@ AddToggle(PlotPage, "Auto Rebirth (Master)", "AutoRebirth", false)
 AddToggle(PlotPage, "Auto Buy Feeders", "AutoBuyFeeders", false)
 AddToggle(PlotPage, "Auto Upgrade Feeder", "AutoUpgradeFeeder", false)
 AddToggle(PlotPage, "Auto Upgrade Coop", "AutoUpgradeCoop", false)
-AddButton(PlotPage, "📌 Set My Current Base/Recycler", function()
+
+AddButton(PlotPage, "📌 Set My Current Base/Recycler", function(btn)
     local root = GetRoot()
     if root then
         mySavedRecyclerPos = root.Position
+        isManualBaseSet = true
+        btn.Text = "✅ BASE LOCKED!"
+        btn.BackgroundColor3 = Color3.fromRGB(20, 90, 20)
+        task.delay(1.5, function()
+            btn.Text = "📌 Set My Current Base/Recycler"
+            btn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        end)
     end
 end)
 
