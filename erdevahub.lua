@@ -46,7 +46,7 @@ local Flags = {
 
 local ToggleUpdaters = {}
 
-local function GetChar()    return player.Character end
+local function GetChar() return player.Character end
 local function GetRoot()
     local c = GetChar()
     return c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso"))
@@ -60,18 +60,18 @@ local function FlatDist(a, b)
     return Vector2.new(a.X - b.X, a.Z - b.Z).Magnitude
 end
 
+-- Gerakan 100% natural menggunakan Humanoid bawaan Roblox
 local function WalkTo(targetPos, timeout, stopDist)
     if not IsRunning then return end
     local hum  = GetHumanoid()
     local root = GetRoot()
     if not hum or not root then return end
-    stopDist = stopDist or 3.5
-    timeout  = timeout  or 8.0
-    hum.WalkSpeed = 16
+    stopDist = stopDist or 3.0
+    timeout  = timeout  or 6.0
     local t0 = tick()
-    while IsRunning and FlatDist(root.Position, targetPos) > stopDist and (tick()-t0) < timeout do
+    while IsRunning and FlatDist(root.Position, targetPos) > stopDist and (tick() - t0) < timeout do
         hum:MoveTo(targetPos)
-        task.wait(0.08 + math.random() * 0.04)
+        task.wait(0.1)
     end
 end
 
@@ -113,25 +113,15 @@ local function ClickGuiByPattern(pat)
     return false
 end
 
-local function FirePrompt(prompt)
+local function TriggerPrompt(prompt)
+    if not prompt or not prompt.Parent then return end
     pcall(function()
-        if prompt:IsA("ProximityPrompt") then
-            if fireproximityprompt then fireproximityprompt(prompt) end
-            pcall(function()
-                prompt:InputHoldBegin()
-                task.wait(math.max(prompt.HoldDuration, 0) + 0.05)
-                prompt:InputHoldEnd()
-            end)
-            pcall(function()
-                local vim = game:GetService("VirtualInputManager")
-                vim:SendKeyEvent(true,  Enum.KeyCode.E, false, game)
-                task.wait(0.1)
-                vim:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-            end)
-            if firesignal then pcall(function() firesignal(prompt.Triggered, player) end) end
-        elseif prompt:IsA("ClickDetector") then
-            if fireclickdetector then fireclickdetector(prompt) end
-            pcall(function() prompt.MouseClick:Fire(player) end)
+        if fireproximityprompt then
+            fireproximityprompt(prompt)
+        else
+            prompt:InputHoldBegin()
+            task.wait(prompt.HoldDuration + 0.05)
+            prompt:InputHoldEnd()
         end
     end)
 end
@@ -169,15 +159,19 @@ local function WalkAndFireAll(patterns)
         if not part or not part:IsA("BasePart") then continue end
         root = GetRoot()
         if not root then break end
-        if (root.Position - part.Position).Magnitude < 400 then
-            WalkTo(part.Position, 5.0, 3.5)
-            task.wait(0.2 + math.random() * 0.1)
-            FirePrompt(prompt)
-            task.wait(0.4 + math.random() * 0.2)
+        if (root.Position - part.Position).Magnitude < 250 then
+            WalkTo(part.Position, 4.0, 3.5)
+            task.wait(0.2)
+            if prompt:IsA("ProximityPrompt") then
+                TriggerPrompt(prompt)
+            elseif prompt:IsA("ClickDetector") and fireclickdetector then
+                pcall(function() fireclickdetector(prompt) end)
+            end
+            task.wait(0.3)
         end
     end
     local r2 = GetRoot()
-    if r2 then WalkTo(savedPos, 4.0, 4.0) end
+    if r2 then WalkTo(savedPos, 3.0, 3.5) end
     IsBusy = false
 end
 
@@ -246,9 +240,10 @@ task.spawn(function()
                 if not root or not hum then task.wait(0.2) return end
                 local cap         = tonumber(Flags.ScrapCapacity) or 20
                 local recyclerPos = GetRecyclerPos()
+
                 if Flags.AutoRecycleScrap and recyclerPos and collectedScraps >= cap then
-                    WalkTo(recyclerPos, 10.0, 3.0)
-                    task.wait(1.2 + math.random() * 0.6)
+                    WalkTo(recyclerPos, 7.0, 2.5)
+                    task.wait(1.2)
                     collectedScraps = 0
                     BlacklistedScraps = {}
                 else
@@ -257,22 +252,24 @@ task.spawn(function()
                         if not IsRunning or not Flags.AutoGrabScraps then break end
                         if not BlacklistedScraps[obj] and IsGroundScrap(obj) then
                             local d = FlatDist(root.Position, obj.Position)
-                            if d < 400 and d < bestDist then bestDist=d best=obj end
+                            if d < 350 and d < bestDist then
+                                bestDist = d
+                                best = obj
+                            end
                         end
                     end
                     if best and collectedScraps < cap then
-                        WalkTo(best.Position, 5.0, 3.0)
-                        task.wait(0.15 + math.random() * 0.2)
+                        WalkTo(best.Position, 3.5, 2.5)
                         BlacklistedScraps[best] = true
                         collectedScraps = collectedScraps + 1
                     else
                         BlacklistedScraps = {}
-                        task.wait(0.3 + math.random() * 0.3)
+                        task.wait(0.2)
                     end
                 end
             end)
         else
-            task.wait(0.3)
+            task.wait(0.25)
         end
     end
 end)
@@ -400,8 +397,6 @@ Gui.DisplayOrder = 9999
 local function Shutdown()
     IsRunning = false
     for k in pairs(Flags) do Flags[k] = false end
-    local hum = GetHumanoid()
-    if hum then hum.WalkSpeed = 16 end
     pcall(function() Gui:Destroy() end)
 end
 
