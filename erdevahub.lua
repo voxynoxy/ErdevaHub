@@ -609,7 +609,7 @@ do
     Instance.new("UICorner", lockBtn).CornerRadius = UDim.new(0,5)
     lockBtn.MouseButton1Click:Connect(function()
         if LockRecycler() then
-            lockBtn.Text = "✅ TERKUNCI! Bot hanya ke posisi ini"
+            lockBtn.Text = "TERKUNCI!"
             lockBtn.BackgroundColor3 = Color3.fromRGB(20,120,20)
             task.delay(2, function()
                 if lockBtn and lockBtn.Parent then
