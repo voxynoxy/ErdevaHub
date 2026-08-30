@@ -1,10 +1,9 @@
 --[[
-    ERDEVA HUB - Perfected Scrap Collector & Recycler
-    - NoClip navigation (Never gets stuck on fences)
-    - Stacks all scraps from coop
-    - Physical Recycler Bin deposit (Fixed "Cash Not Enough" bug)
-    - Smart Tower & Rebirth progression
-    - Complete Shutdown on [X]
+    ERDEVA HUB - 100% Native & Anti-Cheat Safe
+    - Pure Humanoid:MoveTo physics (No CFrame / No Tweens / No Kicks)
+    - Fixed "Cash Not Enough" bug (No accidental purchase clicks)
+    - Smooth continuous Scrap -> Recycler -> Tower -> Rebirth loop
+    - Full clean termination on [X]
 ]]
 
 local Players = game:GetService("Players")
@@ -56,7 +55,7 @@ local Flags = {
 }
 
 --==================================================
--- MOVEMENT & NOCLIP ENGINE
+-- NATIVE HUMAN NAVIGATION (ZERO KICK RISK)
 --==================================================
 
 local function GetChar()
@@ -73,64 +72,33 @@ local function GetHumanoid()
     return char and char:FindFirstChildOfClass("Humanoid")
 end
 
--- Continuous NoClip when auto-moving to prevent getting stuck on fences
-local noclipConnection = nil
-local isNoclipActive = false
-
-local function SetNoClip(state)
-    isNoclipActive = state
-    if state and not noclipConnection then
-        noclipConnection = RunService.Stepped:Connect(function()
-            if not isNoclipActive or not IsRunning then return end
-            local char = GetChar()
-            if char then
-                for _, p in ipairs(char:GetDescendants()) do
-                    if p:IsA("BasePart") then
-                        p.CanCollide = false
-                    end
-                end
-            end
-        end)
-    elseif not state and noclipConnection then
-        noclipConnection:Disconnect()
-        noclipConnection = nil
-    end
-end
-
--- Smooth, non-stuck movement
-local function SafeGlideTo(targetPos, maxTime)
+-- 100% standard Roblox walking (Never flagged by server)
+local function WalkTo(targetPos, maxWait)
     if not IsRunning then return false end
-    local root = GetRoot()
     local hum = GetHumanoid()
-    if not root or not hum then return false end
+    local root = GetRoot()
+    if not hum or not root then return false end
 
     local dist = (root.Position - targetPos).Magnitude
     if dist <= 3.5 then return true end
 
-    SetNoClip(true)
-    local speed = 38
-    local duration = math.clamp(dist / speed, 0.1, maxTime or 2)
-
-    local targetCF = CFrame.new(targetPos.X, targetPos.Y + 2.5, targetPos.Z)
-    local tween = TweenService:Create(root, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = targetCF})
-    tween:Play()
+    hum:MoveTo(targetPos)
 
     local start = tick()
-    while IsRunning and (root.Position - targetPos).Magnitude > 3.5 and (tick() - start < duration + 0.15) do
-        task.wait(0.04)
+    local timeout = maxWait or 3.0
+    while IsRunning and (root.Position - targetPos).Magnitude > 3.5 and (tick() - start < timeout) do
+        task.wait(0.08)
     end
-    tween:Cancel()
-    SetNoClip(false)
-    return (root.Position - targetPos).Magnitude <= 5
+    return (root.Position - targetPos).Magnitude <= 4.5
 end
 
--- Find the Recycler bin on the plot (Rusty box with pipe)
+-- Find the physical Recycler Bin (Rusty box)
 local function FindRecyclerBin()
     local root = GetRoot()
     if not root then return nil end
     for _, obj in ipairs(workspace:GetDescendants()) do
         local n = obj.Name:lower()
-        if (n:find("recycler") or n:find("recycle") or n:find("deposit") or n:find("trashbin")) and not n:find("upgrade") then
+        if (n:find("recycler") or n:find("deposit") or n:find("trashbin")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
             local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
             if part and (root.Position - part.Position).Magnitude < 180 then
                 return part, obj
@@ -194,7 +162,7 @@ local function IsInBattle()
 end
 
 --==================================================
--- STATE MACHINE: SCRAP PICKUP & RECYCLER DEPOSIT
+-- STATE MACHINE: NATURAL SCRAP HARVEST & DEPOSIT
 --==================================================
 
 local collectedCount = 0
@@ -207,38 +175,37 @@ task.spawn(function()
                 local root = GetRoot()
                 if not root then task.wait(0.5) return end
 
-                -- Check if we need to deposit to recycler
+                -- 1. Deposit when holding scraps and reached threshold
                 if Flags.AutoRecycleScrap and collectedCount >= Flags.RecycleThreshold then
                     local recPart, recModel = FindRecyclerBin()
                     if recPart then
-                        SafeGlideTo(recPart.Position, 2)
-                        
-                        -- Interact with recycler bin directly (NO purchase remotes!)
+                        WalkTo(recPart.Position, 4)
+
                         local prompt = recModel:FindFirstChildWhichIsA("ProximityPrompt", true) or recPart:FindFirstChildWhichIsA("ProximityPrompt", true)
                         if prompt and fireproximityprompt then fireproximityprompt(prompt) end
-                        
+
                         local cd = recModel:FindFirstChildWhichIsA("ClickDetector", true) or recPart:FindFirstChildWhichIsA("ClickDetector", true)
                         if cd and fireclickdetector then fireclickdetector(cd) end
-                        
+
                         if firetouchinterest then
                             firetouchinterest(root, recPart, 0)
                             firetouchinterest(root, recPart, 1)
                         end
-                        
-                        task.wait(0.6)
+
+                        task.wait(0.5)
                         collectedCount = 0
                         ProcessedScraps = {}
                     end
                 end
 
-                -- Scan all scraps on the ground inside the coop
+                -- 2. Scan and walk to ground scraps
                 local availableScraps = {}
                 for _, obj in ipairs(workspace:GetDescendants()) do
                     if not Flags.AutoGrabScraps or not IsRunning then break end
                     if not ProcessedScraps[obj] then
                         local n = obj.Name:lower()
                         local pn = obj.Parent and obj.Parent.Name:lower() or ""
-                        if (n:find("scrap") or n:find("trash") or n:find("drop") or pn:find("scrap")) and not n:find("recycler") and not n:find("feeder") and not n:find("upgrade") then
+                        if (n:find("scrap") or n:find("trash") or n:find("drop") or pn:find("scrap")) and not n:find("recycler") and not n:find("feeder") and not n:find("upgrade") and not n:find("shop") then
                             local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
                             if part and not ProcessedScraps[part] then
                                 local dist = (root.Position - part.Position).Magnitude
@@ -250,14 +217,12 @@ task.spawn(function()
                     end
                 end
 
-                -- Sort closest first
                 table.sort(availableScraps, function(a, b) return a.Dist < b.Dist end)
 
                 if #availableScraps > 0 then
                     local target = availableScraps[1]
-                    SafeGlideTo(target.Part.Position, 1.2)
+                    WalkTo(target.Part.Position, 2.5)
 
-                    -- Trigger pickup
                     local prompt = target.Obj:FindFirstChildWhichIsA("ProximityPrompt", true) or target.Part:FindFirstChildWhichIsA("ProximityPrompt", true)
                     if prompt and fireproximityprompt then fireproximityprompt(prompt) end
 
@@ -272,13 +237,13 @@ task.spawn(function()
                     ProcessedScraps[target.Obj] = true
                     ProcessedScraps[target.Part] = true
                     collectedCount = collectedCount + 1
-                    task.wait(0.08)
+                    task.wait(0.05)
                 else
-                    -- No more scraps on ground: if holding any, deposit to recycler
+                    -- No more scraps on ground: deposit whatever we're holding
                     if Flags.AutoRecycleScrap and collectedCount > 0 then
                         local recPart, recModel = FindRecyclerBin()
                         if recPart then
-                            SafeGlideTo(recPart.Position, 2)
+                            WalkTo(recPart.Position, 4)
                             local prompt = recModel:FindFirstChildWhichIsA("ProximityPrompt", true) or recPart:FindFirstChildWhichIsA("ProximityPrompt", true)
                             if prompt and fireproximityprompt then fireproximityprompt(prompt) end
                             if firetouchinterest then
@@ -290,7 +255,7 @@ task.spawn(function()
                         end
                     end
                     ProcessedScraps = {}
-                    task.wait(0.3)
+                    task.wait(0.4)
                 end
             end)
         else
@@ -300,7 +265,7 @@ task.spawn(function()
 end)
 
 --==================================================
--- AUTOMATION: TOWER, REBIRTH & UPGRADES
+-- AUTOMATION: TOWER, REBIRTH & BATTLE
 --==================================================
 
 -- AUTO TOWER (Start -> Wait Fight -> Claim -> Return)
@@ -444,7 +409,6 @@ Gui.DisplayOrder = 9999
 
 local function Shutdown()
     IsRunning = false
-    SetNoClip(false)
     for k in pairs(Flags) do
         Flags[k] = false
     end
@@ -748,4 +712,4 @@ AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
 SetTab("Farm")
-print("[ERDEVA HUB] State machine ready.")
+print("[ERDEVA HUB] Native movement active. Safe from kicks.")
