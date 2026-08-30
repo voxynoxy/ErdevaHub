@@ -1,7 +1,9 @@
 --[[
-    ERDEVA HUB - Smart Master-Sync & Ghost-Fence Automation
-    - Local Fence Ghosting (CanCollide = false on all coop fences):
-      Character walks seamlessly in and out of coop without ever getting stuck!
+    ERDEVA HUB - Stepped Noclip Navigation & Guaranteed Recycler Delivery
+    - Character-Level Noclip (Stepped hook):
+      Character body glides directly through fences/walls without any collision hang.
+    - Guaranteed Recycler Deposit:
+      Delivers whenever capacity is reached, or when no scraps left, or on a 10s cycle.
     - Master Auto-Rebirth: 1-Click activates full AFK cycle:
       * Auto Grab Scraps (Capacity: 20)
       * Auto Recycle Scrap
@@ -9,8 +11,6 @@
       * Auto Upgrade Feeder & Coop
       * Auto Start Tower
       * Auto No Thanks
-    - 100% Native Roblox physics (Safe from kicks)
-    - Plot-Locked Recycler
     - Clean Shutdown on GUI Close [X]
 ]]
 
@@ -66,7 +66,7 @@ local Flags = {
 local ToggleUpdaters = {}
 
 --==================================================
--- GHOST-FENCE & NATIVE NAVIGATION ENGINE
+-- CHARACTER NOCLIP & PHYSICAL NAVIGATION
 --==================================================
 
 local function GetChar()
@@ -83,28 +83,21 @@ local function GetHumanoid()
     return char and char:FindFirstChildOfClass("Humanoid")
 end
 
--- Disable collisions on all fence/gate parts so character never gets blocked
-task.spawn(function()
-    while IsRunning do
-        pcall(function()
-            for _, obj in ipairs(workspace:GetDescendants()) do
-                if not IsRunning then break end
-                if obj:IsA("BasePart") then
-                    local n = obj.Name:lower()
-                    local pn = obj.Parent and obj.Parent.Name:lower() or ""
-                    if n:find("fence") or n:find("gate") or n:find("barrier") or pn:find("fence") or pn:find("gate") then
-                        if obj.CanCollide then
-                            obj.CanCollide = false
-                        end
-                    end
+-- Active Noclip on Character during harvesting/depositing
+RunService.Stepped:Connect(function()
+    if IsRunning and (Flags.AutoGrabScraps or Flags.AutoRecycleScrap) then
+        local char = GetChar()
+        if char then
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") and part.CanCollide then
+                    part.CanCollide = false
                 end
             end
-        end)
-        task.wait(2)
+        end
     end
 end)
 
--- Natural smooth walk with jump fallback
+-- Walk directly to position
 local function WalkTo(targetPos, maxWait)
     if not IsRunning then return false end
     local hum = GetHumanoid()
@@ -112,30 +105,20 @@ local function WalkTo(targetPos, maxWait)
     if not hum or not root then return false end
 
     local dist = (root.Position - targetPos).Magnitude
-    if dist <= 2.5 then return true end
+    if dist <= 2.2 then return true end
 
     hum:MoveTo(targetPos)
 
     local start = tick()
-    local lastPos = root.Position
-    local timeout = maxWait or 3.5
+    local timeout = maxWait or 3.0
 
-    while IsRunning and (root.Position - targetPos).Magnitude > 2.5 and (tick() - start < timeout) do
-        task.wait(0.12)
-        local movedDist = (root.Position - lastPos).Magnitude
-        if movedDist < 0.25 and (root.Position - targetPos).Magnitude > 2.8 then
-            hum.Jump = true
-            local dir = (targetPos - root.Position)
-            local flatDir = Vector3.new(dir.X, 0, dir.Z).Unit
-            hum:Move(flatDir, false)
-            task.wait(0.2)
-            hum:MoveTo(targetPos)
-        end
-        lastPos = root.Position
+    while IsRunning and (root.Position - targetPos).Magnitude > 2.2 and (tick() - start < timeout) do
+        task.wait(0.1)
     end
-    return (root.Position - targetPos).Magnitude <= 3.5
+    return (root.Position - targetPos).Magnitude <= 3.0
 end
 
+-- Find player's plot
 local myPlotCache = nil
 local function GetMyPlot()
     if myPlotCache and myPlotCache.Parent then return myPlotCache end
@@ -173,6 +156,7 @@ local function GetMyPlot()
     return nil
 end
 
+-- Find Recycler in Player's plot
 local function FindMyRecycler()
     local root = GetRoot()
     if not root then return nil, nil end
@@ -181,7 +165,7 @@ local function FindMyRecycler()
     if plot then
         for _, obj in ipairs(plot:GetDescendants()) do
             local n = obj.Name:lower()
-            if (n:find("recycler") or n:find("deposit") or n:find("trashbin")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
+            if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("sell") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
                 local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
                 if part then return part, obj end
             end
@@ -189,10 +173,10 @@ local function FindMyRecycler()
     end
 
     local closestPart, closestModel = nil, nil
-    local minD = 55
+    local minD = 65
     for _, obj in ipairs(workspace:GetDescendants()) do
         local n = obj.Name:lower()
-        if (n:find("recycler") or n:find("deposit") or n:find("trashbin")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
+        if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("sell") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
             local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
             if part then
                 local d = (root.Position - part.Position).Magnitude
@@ -262,11 +246,12 @@ local function IsInBattle()
 end
 
 --==================================================
--- 1. SCRAP HARVEST & DEPOSIT ENGINE
+-- 1. ROBUST HARVEST & RECYCLER ENGINE
 --==================================================
 
 local collectedCount = 0
 local ProcessedScraps = {}
+local lastRecycleTime = tick()
 
 task.spawn(function()
     while IsRunning do
@@ -277,18 +262,7 @@ task.spawn(function()
 
                 local targetCapacity = Flags.ScrapCapacity or Flags.RecycleThreshold or 20
 
-                -- 1. Deposit into OWN Recycler when reaching capacity
-                if Flags.AutoRecycleScrap and collectedCount >= targetCapacity then
-                    local recPart, recModel = FindMyRecycler()
-                    if recPart then
-                        WalkTo(recPart.Position, 4.0)
-                        task.wait(1.2)
-                        collectedCount = 0
-                        ProcessedScraps = {}
-                    end
-                end
-
-                -- 2. Scan and walk to ground scraps inside coop
+                -- Scan ground scraps in coop
                 local availableScraps = {}
                 for _, obj in ipairs(workspace:GetDescendants()) do
                     if not Flags.AutoGrabScraps or not IsRunning then break end
@@ -299,7 +273,7 @@ task.spawn(function()
                             local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
                             if part and not ProcessedScraps[part] then
                                 local dist = (root.Position - part.Position).Magnitude
-                                if dist < 85 then
+                                if dist < 90 then
                                     table.insert(availableScraps, {Part = part, Obj = obj, Dist = dist})
                                 end
                             end
@@ -309,25 +283,30 @@ task.spawn(function()
 
                 table.sort(availableScraps, function(a, b) return a.Dist < b.Dist end)
 
-                if #availableScraps > 0 and collectedCount < targetCapacity then
+                -- Check if ready to deposit: capacity reached, or time elapsed (>10s with scraps), or 0 scraps left
+                local shouldDeposit = Flags.AutoRecycleScrap and (collectedCount >= targetCapacity or (#availableScraps == 0 and collectedCount > 0) or (tick() - lastRecycleTime > 12 and collectedCount > 0))
+
+                if shouldDeposit then
+                    local recPart, recModel = FindMyRecycler()
+                    if recPart then
+                        WalkTo(recPart.Position, 3.5)
+                        task.wait(1.5) -- stand inside recycler pad to convert
+                        collectedCount = 0
+                        ProcessedScraps = {}
+                        lastRecycleTime = tick()
+                    end
+                elseif #availableScraps > 0 and collectedCount < targetCapacity then
                     local target = availableScraps[1]
+                    -- Walk through fence directly over scrap
                     WalkTo(target.Part.Position, 2.5)
 
                     ProcessedScraps[target.Obj] = true
                     ProcessedScraps[target.Part] = true
                     collectedCount = collectedCount + 1
-                    task.wait(0.1)
+                    task.wait(0.08)
                 else
-                    if Flags.AutoRecycleScrap and collectedCount > 0 then
-                        local recPart, recModel = FindMyRecycler()
-                        if recPart then
-                            WalkTo(recPart.Position, 4.0)
-                            task.wait(1.2)
-                            collectedCount = 0
-                        end
-                    end
                     ProcessedScraps = {}
-                    task.wait(0.4)
+                    task.wait(0.35)
                 end
             end)
         else
@@ -415,19 +394,16 @@ task.spawn(function()
                     end
 
                     if canConfirm then
-                        -- Selesaikan fusi ayam untuk bonus koin multiplier
                         ClickGuiByPattern("fuse")
                         ClickGuiByPattern("merge")
                         task.wait(0.2)
 
-                        -- Habiskan Cash ke Feeder, Coop, Incubator sebelum reset
                         ClickGuiByPattern("upgrade feeder")
                         ClickGuiByPattern("upgrade incubator")
                         ClickGuiByPattern("upgrade coop")
                         ClickGuiByPattern("buy feeder")
                         task.wait(0.2)
 
-                        -- Konfirmasi Rebirth
                         ClickGuiByPattern("confirm")
                         ClickGuiByPattern("yes")
                         ClickGuiByPattern("do rebirth")
@@ -880,4 +856,4 @@ AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
 SetTab("Farm")
-print("[ERDEVA HUB] Ghost-Fence Navigation Active.")
+print("[ERDEVA HUB] Guaranteed Recycler & Stepped Noclip Active.")
