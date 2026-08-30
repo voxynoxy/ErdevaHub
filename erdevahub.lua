@@ -1,10 +1,9 @@
 --[[
-    ERDEVA HUB - Zero-Delay Fluid Harvesting & Strict Capacity Rebirth
-    - Zero-Pause Scrap Harvesting:
-      * Scoped plot scanning (no workspace freezing)
-      * Instant target switching (0ms delay between pickups)
-      * Continuous fluid MoveTo streaming without stutter
-    - Strict Capacity Farming (Never leaves coop before full target capacity)
+    ERDEVA HUB - Fluid Non-Stop Scrap Harvester & Perfect Progression
+    - Fix: Excludes scraps attached to player head / characters so it never targets itself!
+    - Non-Stop Scraping: Chains directly to the next ground scrap with 0 pauses.
+    - Accurate Capacity Tracking: Reads held scraps + collection counter to guarantee exact target count (e.g. 20).
+    - Auto Recycler Deposit: Walks to Recycler pad the moment capacity is reached.
     - Master Auto-Rebirth: 1-Click activates full AFK cycle:
       * Auto Grab Scraps (Strict Capacity: 20)
       * Auto Recycle Scrap
@@ -12,7 +11,7 @@
       * Auto Upgrade Feeder & Coop
       * Auto Start Tower
       * Auto No Thanks
-    - Character Noclip (Stepped hook) for smooth fence traversal
+    - Character Noclip (Stepped hook) for smooth fence gliding.
     - Clean Shutdown on GUI Close [X]
 ]]
 
@@ -99,7 +98,7 @@ RunService.Stepped:Connect(function()
     end
 end)
 
--- Snappy, non-blocking WalkTo
+-- Fast non-blocking walk
 local function WalkTo(targetPos, maxWait)
     if not IsRunning then return false end
     local hum = GetHumanoid()
@@ -111,12 +110,12 @@ local function WalkTo(targetPos, maxWait)
     hum:MoveTo(targetPos)
 
     local start = tick()
-    local timeout = maxWait or 2.0
+    local timeout = maxWait or 2.5
 
     while IsRunning and (root.Position - targetPos).Magnitude > 2.2 and (tick() - start < timeout) do
-        task.wait(0.05)
+        task.wait(0.04)
     end
-    return (root.Position - targetPos).Magnitude <= 3.0
+    return (root.Position - targetPos).Magnitude <= 2.8
 end
 
 local myPlotCache = nil
@@ -244,73 +243,93 @@ local function IsInBattle()
     return false
 end
 
+-- Check how many scraps are actually held on player's head
+local function GetHeldScrapCount()
+    local char = GetChar()
+    if not char then return 0 end
+    local count = 0
+    for _, item in ipairs(char:GetDescendants()) do
+        if item:IsA("BasePart") and item.Name ~= "HumanoidRootPart" and item.Name ~= "Head" and item.Name ~= "Torso" and not item.Name:find("Arm") and not item.Name:find("Leg") and not item.Name:find("Hand") and not item.Name:find("Foot") and not item.Name:find("Upper") and not item.Name:find("Lower") then
+            local n = item.Name:lower()
+            local pn = item.Parent and item.Parent.Name:lower() or ""
+            if n:find("scrap") or n:find("trash") or n:find("drop") or n:find("plate") or pn:find("scrap") then
+                count = count + 1
+            end
+        end
+    end
+    return count
+end
+
+-- Validate that a scrap is strictly lying on the ground (NOT attached to any player)
+local function IsGroundScrap(obj)
+    if not obj:IsA("BasePart") or not obj.Parent then return false end
+    -- Ignore if inside any player character
+    local ancestorModel = obj:FindFirstAncestorOfClass("Model")
+    if ancestorModel and ancestorModel:FindFirstChildOfClass("Humanoid") then
+        return false
+    end
+    local n = obj.Name:lower()
+    local pn = obj.Parent.Name:lower()
+    if (n:find("scrap") or n:find("trash") or n:find("drop") or pn:find("scrap") or pn:find("trash")) and not n:find("recycler") and not n:find("feeder") and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
+        return true
+    end
+    return false
+end
+
 --==================================================
--- 1. ZERO-DELAY FLUID HARVEST & RECYCLER ENGINE
+-- 1. NON-STOP FLUID SCRAP HARVESTING ENGINE
 --==================================================
 
 local collectedCount = 0
-local ProcessedScraps = {}
 
 task.spawn(function()
     while IsRunning do
         if Flags.AutoGrabScraps and not IsInBattle() then
             pcall(function()
                 local root = GetRoot()
-                if not root then task.wait(0.2) return end
+                if not root then task.wait(0.1) return end
 
                 local targetCapacity = Flags.ScrapCapacity or Flags.RecycleThreshold or 20
+                local actualHeld = GetHeldScrapCount()
+                local currentTotal = math.max(collectedCount, actualHeld)
 
-                -- 1. If strict capacity is met: walk to Recycler, deposit, reset
-                if Flags.AutoRecycleScrap and collectedCount >= targetCapacity then
+                -- 1. If capacity is fully reached: Go to Recycler, deposit, reset
+                if Flags.AutoRecycleScrap and currentTotal >= targetCapacity then
                     local recPart, recModel = FindMyRecycler()
                     if recPart then
                         WalkTo(recPart.Position, 3.5)
-                        task.wait(1.2) -- Quick deposit on pad
+                        task.wait(1.5) -- Stand on pad until all stacked scraps are converted
                         collectedCount = 0
-                        ProcessedScraps = {}
                     end
                 end
 
-                -- 2. Fast Scrap Search (Scoped search inside plot first for speed)
-                local searchScope = GetMyPlot() or workspace
-                local availableScraps = {}
+                -- 2. Find closest ground scrap
+                local closestPart = nil
+                local minDistance = 9999
 
-                for _, obj in ipairs(searchScope:GetDescendants()) do
+                for _, obj in ipairs(workspace:GetDescendants()) do
                     if not Flags.AutoGrabScraps or not IsRunning then break end
-                    if not ProcessedScraps[obj] and obj.Parent then
-                        local n = obj.Name:lower()
-                        local pn = obj.Parent and obj.Parent.Name:lower() or ""
-                        if (n:find("scrap") or n:find("trash") or n:find("drop") or pn:find("scrap")) and not n:find("recycler") and not n:find("feeder") and not n:find("upgrade") and not n:find("shop") then
-                            local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
-                            if part and not ProcessedScraps[part] and part.Parent then
-                                local dist = (root.Position - part.Position).Magnitude
-                                if dist < 90 then
-                                    table.insert(availableScraps, {Part = part, Obj = obj, Dist = dist})
-                                end
-                            end
+                    if IsGroundScrap(obj) then
+                        local dist = (root.Position - obj.Position).Magnitude
+                        if dist < 85 and dist < minDistance then
+                            minDistance = dist
+                            closestPart = obj
                         end
                     end
                 end
 
-                table.sort(availableScraps, function(a, b) return a.Dist < b.Dist end)
-
-                -- 3. Seamless Instant Pickup Pipeline
-                if #availableScraps > 0 and collectedCount < targetCapacity then
-                    local target = availableScraps[1]
-                    WalkTo(target.Part.Position, 1.8)
-
-                    ProcessedScraps[target.Obj] = true
-                    ProcessedScraps[target.Part] = true
+                -- 3. Walk non-stop directly to ground scrap
+                if closestPart and currentTotal < targetCapacity then
+                    WalkTo(closestPart.Position, 1.8)
                     collectedCount = collectedCount + 1
-                    -- 0ms delay: immediately flows to next scrap!
+                    -- 0ms delay: immediately searches and moves to next ground scrap without pausing!
                 else
-                    -- No scraps on ground right now: small 0.1s tick waiting for next chicken drop
-                    ProcessedScraps = {}
+                    -- No ground scraps at this moment: brief 0.1s wait for new drops
                     task.wait(0.1)
                 end
             end)
         else
-            task.wait(0.3)
+            task.wait(0.25)
         end
     end
 end)
@@ -412,7 +431,6 @@ task.spawn(function()
                         task.wait(3.0)
                         myPlotCache = nil
                         collectedCount = 0
-                        ProcessedScraps = {}
                         isTowerBusy = false
                     else
                         ClickGuiByPattern("close")
@@ -856,4 +874,4 @@ AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
 SetTab("Farm")
-print("[ERDEVA HUB] Zero-Delay Fluid Harvesting Active.")
+print("[ERDEVA HUB] Non-Stop Fluid Harvesting Active.")
