@@ -96,11 +96,12 @@ end
 
 local mySavedPlot = nil
 local mySavedRecycler = nil
+local mySavedRecyclerPos = nil
 local mySavedArenaCenter = nil
 
 local function DetectBaseAndArena()
-    if mySavedPlot and mySavedRecycler and mySavedArenaCenter then
-        return mySavedPlot, mySavedRecycler, mySavedArenaCenter
+    if mySavedRecyclerPos and mySavedArenaCenter then
+        return mySavedPlot, mySavedRecyclerPos, mySavedArenaCenter
     end
 
     local root = GetRoot()
@@ -139,7 +140,10 @@ local function DetectBaseAndArena()
             local n = child.Name:lower()
             if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
                 local part = child:IsA("BasePart") and child or child:FindFirstChildWhichIsA("BasePart")
-                if part then mySavedRecycler = part end
+                if part then
+                    mySavedRecycler = part
+                    mySavedRecyclerPos = part.Position
+                end
             end
             if (n:find("dirt") or n:find("coop") or n:find("arena") or n:find("circle") or n:find("floor")) and child:IsA("BasePart") and child.Size.X > 15 then
                 mySavedArenaCenter = child.Position
@@ -147,35 +151,45 @@ local function DetectBaseAndArena()
         end
     end
 
-    if not mySavedRecycler and root then
-        local candidates = {}
+    if not mySavedRecyclerPos and root then
+        local myInitialPos = root.Position
+        local bestRecycler = nil
+        local minD = 9999
+
         for _, obj in ipairs(workspace:GetDescendants()) do
             local n = obj.Name:lower()
             if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
                 local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
                 if part then
                     local pModel = part:FindFirstAncestorWhichIsA("Model") or part:FindFirstAncestorWhichIsA("Folder")
-                    local isOtherPlayer = false
+                    local isEnemy = false
                     if pModel then
                         for _, otherP in ipairs(Players:GetPlayers()) do
                             if otherP ~= player and (pModel.Name:find(otherP.Name) or (pModel:FindFirstChild("Owner") and tostring(pModel.Owner.Value) == otherP.Name)) then
-                                isOtherPlayer = true
+                                isEnemy = true
                                 break
                             end
                         end
                     end
-                    if not isOtherPlayer then
-                        local d = (root.Position - part.Position).Magnitude
-                        table.insert(candidates, {part = part, dist = d})
+
+                    if not isEnemy then
+                        local d = (myInitialPos - part.Position).Magnitude
+                        if d < minD then
+                            minD = d
+                            bestRecycler = part
+                        end
                     end
                 end
             end
         end
-        table.sort(candidates, function(a, b) return a.dist < b.dist end)
-        if candidates[1] then mySavedRecycler = candidates[1].part end
+
+        if bestRecycler then
+            mySavedRecycler = bestRecycler
+            mySavedRecyclerPos = bestRecycler.Position
+        end
     end
 
-    return mySavedPlot, mySavedRecycler, mySavedArenaCenter
+    return mySavedPlot, mySavedRecyclerPos, mySavedArenaCenter
 end
 
 local function ClickButton(btn)
@@ -311,10 +325,10 @@ task.spawn(function()
                 if not root or not hum then task.wait(0.1) return end
 
                 local targetCapacity = tonumber(Flags.ScrapCapacity) or 20
-                local plot, myRecycler, arenaCenter = DetectBaseAndArena()
+                local plot, recyclerPos, arenaCenter = DetectBaseAndArena()
 
-                if Flags.AutoRecycleScrap and myRecycler and collectedScraps >= targetCapacity then
-                    GroundRunTo(myRecycler.Position, 4.0, 2.5)
+                if Flags.AutoRecycleScrap and recyclerPos and collectedScraps >= targetCapacity then
+                    GroundRunTo(recyclerPos, 4.5, 2.5)
                     root.AssemblyLinearVelocity = Vector3.zero
                     task.wait(1.5)
                     collectedScraps = 0
@@ -437,6 +451,7 @@ task.spawn(function()
                         task.wait(3.0)
                         mySavedPlot = nil
                         mySavedRecycler = nil
+                        mySavedRecyclerPos = nil
                         mySavedArenaCenter = nil
                         collectedScraps = 0
                         BlacklistedScraps = {}
@@ -741,6 +756,18 @@ local function AddToggle(parent, text, flagKey, defaultVal)
     end)
 end
 
+local function AddButton(parent, text, cb)
+    local b = Instance.new("TextButton", parent)
+    b.Size = UDim2.new(1, 0, 0, 28)
+    b.BackgroundColor3 = C.Card
+    b.Text = text
+    b.TextColor3 = C.Txt
+    b.TextSize = 11
+    b.Font = Enum.Font.GothamMedium
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+    b.MouseButton1Click:Connect(cb)
+end
+
 local function AddSlider(parent, text, maxV, defV, flagKey)
     local f = Instance.new("Frame", parent)
     f.Size = UDim2.new(1, 0, 0, 36)
@@ -813,6 +840,12 @@ AddToggle(PlotPage, "Auto Rebirth (Master)", "AutoRebirth", false)
 AddToggle(PlotPage, "Auto Buy Feeders", "AutoBuyFeeders", false)
 AddToggle(PlotPage, "Auto Upgrade Feeder", "AutoUpgradeFeeder", false)
 AddToggle(PlotPage, "Auto Upgrade Coop", "AutoUpgradeCoop", false)
+AddButton(PlotPage, "📌 Set My Current Base/Recycler", function()
+    local root = GetRoot()
+    if root then
+        mySavedRecyclerPos = root.Position
+    end
+end)
 
 AddToggle(BattlePage, "Auto Start Tower", "AutoStartTower", false)
 AddToggle(BattlePage, "Auto No Thanks", "AutoNoThanks", false)
