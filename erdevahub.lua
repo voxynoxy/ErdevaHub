@@ -41,6 +41,7 @@ local Flags = {
     AutoUpgradeFeeder  = false,
     AutoBuyFeeders     = false,
     AutoStartTower     = false,
+    TowerMinLevel      = 50,
     AutoNoThanks       = false,
     AutoStartChaos     = false,
 }
@@ -57,7 +58,6 @@ local function GetHumanoid()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
--- Safe Noclip to prevent getting stuck in fences and walls
 RunService.Stepped:Connect(function()
     if IsRunning and (Flags.AutoGrabScraps or Flags.AutoRecycleScrap or Flags.AutoBuyFeeders or Flags.AutoUpgradeFeeder or Flags.AutoUpgradeRecycler) then
         local char = GetChar()
@@ -140,6 +140,21 @@ local function TriggerPrompt(prompt)
     end)
 end
 
+local function HasBuyFeederAvailable()
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") then
+            local act = obj.ActionText:lower()
+            local objT = obj.ObjectText:lower()
+            local pn = (obj.Parent and obj.Parent.Name:lower()) or ""
+            local comb = act .. " " .. objT .. " " .. pn
+            if comb:find("buy feeder") or comb:find("buy feed") or comb:find("purchase feeder") then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 local function WalkAndFireAll(patterns)
     local root = GetRoot()
     if not root then return end
@@ -207,6 +222,38 @@ local function TriggerRemote(pattern)
     end
 end
 
+local function GetHighestChickenLevel()
+    local highest = 0
+    local pg = player:FindFirstChild("PlayerGui")
+    if pg then
+        for _, lbl in ipairs(pg:GetDescendants()) do
+            if lbl:IsA("TextLabel") and lbl.Visible then
+                local t = lbl.Text
+                local lv = t:match("[Ll][Vv]%.?%s*(%d+)") or t:match("[Ll][Ee][Vv][Ee][Ll]%s*(%d+)")
+                if lv then
+                    local num = tonumber(lv)
+                    if num and num > highest and num < 10000 then
+                        highest = num
+                    end
+                end
+            end
+        end
+    end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("TextLabel") or obj:IsA("SurfaceGui") or obj:IsA("BillboardGui") then
+            local t = (obj:IsA("TextLabel") and obj.Text) or ""
+            local lv = t:match("[Ll][Vv]%.?%s*(%d+)") or t:match("[Ll][Ee][Vv][Ee][Ll]%s*(%d+)")
+            if lv then
+                local num = tonumber(lv)
+                if num and num > highest and num < 10000 then
+                    highest = num
+                end
+            end
+        end
+    end
+    return highest
+end
+
 local function IsInBattle()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
@@ -217,7 +264,7 @@ local function IsInBattle()
                 for _, el in ipairs(g:GetDescendants()) do
                     if el:IsA("GuiObject") and el.Visible then
                         local en = el.Name:lower()
-                        if en:find("health") or en:find("hp") or en:find("enemy") or en:find("round") then
+                        if en:find("health") or en:find("hp") or en:find("enemy") or en:find("round") or en:find("floor") then
                             return true
                         end
                     end
@@ -254,6 +301,13 @@ task.spawn(function()
                 if not root or not hum then task.wait(0.2) return end
                 local cap         = tonumber(Flags.ScrapCapacity) or 20
                 local recyclerPos = GetRecyclerPos()
+
+                if HasBuyFeederAvailable() and (Flags.AutoBuyFeeders or Flags.AutoRebirth) then
+                    WalkAndFireAll({"buy feeder", "buy feed", "purchase feeder"})
+                    ClickGuiByPattern("buy feeder")
+                    TriggerRemote("buy feeder")
+                    task.wait(0.5)
+                end
 
                 if Flags.AutoRecycleScrap and recyclerPos and collectedScraps >= cap then
                     WalkTo(recyclerPos, 7.0, 2.5)
@@ -293,23 +347,31 @@ task.spawn(function()
     while IsRunning do
         if Flags.AutoStartTower and not isTowerBusy then
             pcall(function()
-                if not IsInBattle() then
+                local curLv = GetHighestChickenLevel()
+                local reqLv = tonumber(Flags.TowerMinLevel) or 50
+                if curLv >= reqLv and not IsInBattle() then
                     isTowerBusy = true
                     ClickGuiByPattern("tower")
                     task.wait(2.5)
                     local elapsed = 0
-                    while elapsed < 90 and IsRunning and Flags.AutoStartTower do
-                        task.wait(1) elapsed = elapsed + 1
-                        ClickGuiByPattern("claim") ClickGuiByPattern("next floor")
-                        ClickGuiByPattern("victory") ClickGuiByPattern("no thanks") ClickGuiByPattern("continue")
-                        if not IsInBattle() and elapsed > 5 then break end
+                    while elapsed < 120 and IsRunning and Flags.AutoStartTower do
+                        task.wait(1)
+                        elapsed = elapsed + 1
+                        ClickGuiByPattern("claim")
+                        ClickGuiByPattern("next floor")
+                        ClickGuiByPattern("victory")
+                        ClickGuiByPattern("no thanks")
+                        ClickGuiByPattern("continue")
+                        if not IsInBattle() and elapsed > 6 then
+                            break
+                        end
                     end
-                    task.wait(1.5)
+                    task.wait(2.0)
                     isTowerBusy = false
                 end
             end)
         end
-        task.wait(1)
+        task.wait(1.5)
     end
 end)
 
@@ -344,6 +406,9 @@ task.spawn(function()
                         ClickGuiByPattern("confirm") ClickGuiByPattern("yes") ClickGuiByPattern("do rebirth") ClickGuiByPattern("claim rebirth")
                         task.wait(3.5)
                         collectedScraps=0 BlacklistedScraps={} isTowerBusy=false
+                        WalkAndFireAll({"buy feeder", "buy feed", "purchase feeder"})
+                        ClickGuiByPattern("buy feeder")
+                        TriggerRemote("buy feeder")
                     else
                         ClickGuiByPattern("close")
                     end
@@ -636,6 +701,7 @@ do
 end
 
 AddToggle(BattlePage, "Auto Start Tower",  "AutoStartTower")
+AddSlider(BattlePage, "Min Chicken Lv for Tower", 100, 50, "TowerMinLevel")
 AddToggle(BattlePage, "Auto No Thanks",    "AutoNoThanks")
 AddToggle(BattlePage, "Auto Start Chaos",  "AutoStartChaos")
 
