@@ -1,9 +1,10 @@
 --[[
-    ERDEVA HUB - Fast & Safe State Machine
-    - Continuous Scrap Gathering (No Stalling / Ignore-Cache)
-    - Auto-Deposit to Recycler immediately when threshold reached
-    - Fast natural movement (35 studs/s - Anti-Kick safe)
-    - Clean Shutdown on GUI Close [X]
+    ERDEVA HUB - Perfected Scrap Collector & Recycler
+    - NoClip navigation (Never gets stuck on fences)
+    - Stacks all scraps from coop
+    - Physical Recycler Bin deposit (Fixed "Cash Not Enough" bug)
+    - Smart Tower & Rebirth progression
+    - Complete Shutdown on [X]
 ]]
 
 local Players = game:GetService("Players")
@@ -55,7 +56,7 @@ local Flags = {
 }
 
 --==================================================
--- UTILITIES & MOVEMENT ENGINE
+-- MOVEMENT & NOCLIP ENGINE
 --==================================================
 
 local function GetChar()
@@ -72,30 +73,71 @@ local function GetHumanoid()
     return char and char:FindFirstChildOfClass("Humanoid")
 end
 
-local function MoveToPosition(targetPos, maxWaitTime)
+-- Continuous NoClip when auto-moving to prevent getting stuck on fences
+local noclipConnection = nil
+local isNoclipActive = false
+
+local function SetNoClip(state)
+    isNoclipActive = state
+    if state and not noclipConnection then
+        noclipConnection = RunService.Stepped:Connect(function()
+            if not isNoclipActive or not IsRunning then return end
+            local char = GetChar()
+            if char then
+                for _, p in ipairs(char:GetDescendants()) do
+                    if p:IsA("BasePart") then
+                        p.CanCollide = false
+                    end
+                end
+            end
+        end)
+    elseif not state and noclipConnection then
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+    end
+end
+
+-- Smooth, non-stuck movement
+local function SafeGlideTo(targetPos, maxTime)
     if not IsRunning then return false end
     local root = GetRoot()
     local hum = GetHumanoid()
     if not root or not hum then return false end
 
     local dist = (root.Position - targetPos).Magnitude
-    if dist <= 4 then return true end
+    if dist <= 3.5 then return true end
 
-    local speed = 36
-    local duration = math.clamp(dist / speed, 0.1, maxWaitTime or 2.5)
+    SetNoClip(true)
+    local speed = 38
+    local duration = math.clamp(dist / speed, 0.1, maxTime or 2)
 
-    hum:MoveTo(targetPos)
-    local tween = TweenService:Create(root, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
-        CFrame = CFrame.new(targetPos + Vector3.new(0, 2, 0))
-    })
+    local targetCF = CFrame.new(targetPos.X, targetPos.Y + 2.5, targetPos.Z)
+    local tween = TweenService:Create(root, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = targetCF})
     tween:Play()
 
     local start = tick()
-    while IsRunning and (root.Position - targetPos).Magnitude > 4 and (tick() - start < duration + 0.2) do
-        task.wait(0.05)
+    while IsRunning and (root.Position - targetPos).Magnitude > 3.5 and (tick() - start < duration + 0.15) do
+        task.wait(0.04)
     end
     tween:Cancel()
+    SetNoClip(false)
     return (root.Position - targetPos).Magnitude <= 5
+end
+
+-- Find the Recycler bin on the plot (Rusty box with pipe)
+local function FindRecyclerBin()
+    local root = GetRoot()
+    if not root then return nil end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        local n = obj.Name:lower()
+        if (n:find("recycler") or n:find("recycle") or n:find("deposit") or n:find("trashbin")) and not n:find("upgrade") then
+            local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
+            if part and (root.Position - part.Position).Magnitude < 180 then
+                return part, obj
+            end
+        end
+    end
+    return nil, nil
 end
 
 local function ClickButton(btn)
@@ -151,46 +193,12 @@ local function IsInBattle()
     return false
 end
 
-local function CallRemotes(keywords, ...)
-    if not IsRunning then return end
-    local args = {...}
-    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
-        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
-            local name = obj.Name:lower()
-            for _, k in ipairs(keywords) do
-                if name:find(k:lower()) then
-                    pcall(function()
-                        if obj:IsA("RemoteEvent") then
-                            obj:FireServer(unpack(args))
-                        else
-                            obj:InvokeServer(unpack(args))
-                        end
-                    end)
-                end
-            end
-        end
-    end
-end
-
-local function FindRecycler()
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        local n = obj.Name:lower()
-        if (n:find("recycler") or n:find("recycle")) and not n:find("coop") then
-            local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
-            if part then
-                return part, obj
-            end
-        end
-    end
-    return nil, nil
-end
-
 --==================================================
--- STATE MACHINE: SCRAP + RECYCLER ENGINE
+-- STATE MACHINE: SCRAP PICKUP & RECYCLER DEPOSIT
 --==================================================
 
-local collectedScrapsCount = 0
-local IgnoredItems = {}
+local collectedCount = 0
+local ProcessedScraps = {}
 
 task.spawn(function()
     while IsRunning do
@@ -199,89 +207,90 @@ task.spawn(function()
                 local root = GetRoot()
                 if not root then task.wait(0.5) return end
 
-                -- 1. Deposit Check
-                if Flags.AutoRecycleScrap and collectedScrapsCount >= Flags.RecycleThreshold then
-                    local recPart, recModel = FindRecycler()
+                -- Check if we need to deposit to recycler
+                if Flags.AutoRecycleScrap and collectedCount >= Flags.RecycleThreshold then
+                    local recPart, recModel = FindRecyclerBin()
                     if recPart then
-                        MoveToPosition(recPart.Position, 2.5)
-
+                        SafeGlideTo(recPart.Position, 2)
+                        
+                        -- Interact with recycler bin directly (NO purchase remotes!)
                         local prompt = recModel:FindFirstChildWhichIsA("ProximityPrompt", true) or recPart:FindFirstChildWhichIsA("ProximityPrompt", true)
                         if prompt and fireproximityprompt then fireproximityprompt(prompt) end
-
+                        
                         local cd = recModel:FindFirstChildWhichIsA("ClickDetector", true) or recPart:FindFirstChildWhichIsA("ClickDetector", true)
                         if cd and fireclickdetector then fireclickdetector(cd) end
-
+                        
                         if firetouchinterest then
                             firetouchinterest(root, recPart, 0)
                             firetouchinterest(root, recPart, 1)
                         end
-
-                        CallRemotes({"recycle", "deposit", "recycler"}, Flags.RecycleThreshold)
-                        ClickGuiByPattern("recycle")
-                        ClickGuiByPattern("deposit")
-
+                        
                         task.wait(0.6)
-                        collectedScrapsCount = 0
-                        IgnoredItems = {}
+                        collectedCount = 0
+                        ProcessedScraps = {}
                     end
                 end
 
-                -- 2. Find closest valid scrap
-                local closestPart, closestObj = nil, nil
-                local minDistance = 140
-
+                -- Scan all scraps on the ground inside the coop
+                local availableScraps = {}
                 for _, obj in ipairs(workspace:GetDescendants()) do
                     if not Flags.AutoGrabScraps or not IsRunning then break end
-                    if not IgnoredItems[obj] then
+                    if not ProcessedScraps[obj] then
                         local n = obj.Name:lower()
                         local pn = obj.Parent and obj.Parent.Name:lower() or ""
-                        if (n:find("scrap") or n:find("trash") or n:find("drop") or n:find("debris") or pn:find("scrap")) and not n:find("feeder") and not n:find("recycler") then
+                        if (n:find("scrap") or n:find("trash") or n:find("drop") or pn:find("scrap")) and not n:find("recycler") and not n:find("feeder") and not n:find("upgrade") then
                             local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
-                            if part and not IgnoredItems[part] then
+                            if part and not ProcessedScraps[part] then
                                 local dist = (root.Position - part.Position).Magnitude
-                                if dist < minDistance then
-                                    minDistance = dist
-                                    closestPart = part
-                                    closestObj = obj
+                                if dist < 120 then
+                                    table.insert(availableScraps, {Part = part, Obj = obj, Dist = dist})
                                 end
                             end
                         end
                     end
                 end
 
-                if closestPart and closestObj then
-                    MoveToPosition(closestPart.Position, 1.5)
+                -- Sort closest first
+                table.sort(availableScraps, function(a, b) return a.Dist < b.Dist end)
 
-                    local prompt = closestObj:FindFirstChildWhichIsA("ProximityPrompt", true) or closestPart:FindFirstChildWhichIsA("ProximityPrompt", true)
+                if #availableScraps > 0 then
+                    local target = availableScraps[1]
+                    SafeGlideTo(target.Part.Position, 1.2)
+
+                    -- Trigger pickup
+                    local prompt = target.Obj:FindFirstChildWhichIsA("ProximityPrompt", true) or target.Part:FindFirstChildWhichIsA("ProximityPrompt", true)
                     if prompt and fireproximityprompt then fireproximityprompt(prompt) end
 
-                    local cd = closestObj:FindFirstChildWhichIsA("ClickDetector", true) or closestPart:FindFirstChildWhichIsA("ClickDetector", true)
+                    local cd = target.Obj:FindFirstChildWhichIsA("ClickDetector", true) or target.Part:FindFirstChildWhichIsA("ClickDetector", true)
                     if cd and fireclickdetector then fireclickdetector(cd) end
 
                     if firetouchinterest then
-                        firetouchinterest(root, closestPart, 0)
-                        firetouchinterest(root, closestPart, 1)
+                        firetouchinterest(root, target.Part, 0)
+                        firetouchinterest(root, target.Part, 1)
                     end
 
-                    CallRemotes({"scrap", "collect", "grab", "pickup"})
-
-                    IgnoredItems[closestObj] = true
-                    IgnoredItems[closestPart] = true
-                    collectedScrapsCount = collectedScrapsCount + 1
-                    task.wait(0.1)
+                    ProcessedScraps[target.Obj] = true
+                    ProcessedScraps[target.Part] = true
+                    collectedCount = collectedCount + 1
+                    task.wait(0.08)
                 else
-                    if Flags.AutoRecycleScrap and collectedScrapsCount > 0 then
-                        local recPart, recModel = FindRecycler()
+                    -- No more scraps on ground: if holding any, deposit to recycler
+                    if Flags.AutoRecycleScrap and collectedCount > 0 then
+                        local recPart, recModel = FindRecyclerBin()
                         if recPart then
-                            MoveToPosition(recPart.Position, 2)
-                            CallRemotes({"recycle", "deposit", "recycler"}, collectedScrapsCount)
-                            ClickGuiByPattern("recycle")
+                            SafeGlideTo(recPart.Position, 2)
+                            local prompt = recModel:FindFirstChildWhichIsA("ProximityPrompt", true) or recPart:FindFirstChildWhichIsA("ProximityPrompt", true)
+                            if prompt and fireproximityprompt then fireproximityprompt(prompt) end
+                            if firetouchinterest then
+                                firetouchinterest(root, recPart, 0)
+                                firetouchinterest(root, recPart, 1)
+                            end
                             task.wait(0.5)
-                            collectedScrapsCount = 0
+                            collectedCount = 0
                         end
                     end
-                    IgnoredItems = {}
-                    task.wait(0.4)
+                    ProcessedScraps = {}
+                    task.wait(0.3)
                 end
             end)
         else
@@ -291,10 +300,10 @@ task.spawn(function()
 end)
 
 --==================================================
--- OTHER AUTOMATION THREADS
+-- AUTOMATION: TOWER, REBIRTH & UPGRADES
 --==================================================
 
--- AUTO TOWER
+-- AUTO TOWER (Start -> Wait Fight -> Claim -> Return)
 local isTowerBusy = false
 task.spawn(function()
     while IsRunning do
@@ -303,7 +312,6 @@ task.spawn(function()
                 if not IsInBattle() then
                     isTowerBusy = true
                     ClickGuiByPattern("tower")
-                    CallRemotes({"tower", "starttower", "entertower"})
 
                     task.wait(2.5)
                     local elapsed = 0
@@ -338,29 +346,13 @@ task.spawn(function()
         if Flags.AutoRebirth and not IsInBattle() then
             pcall(function()
                 ClickGuiByPattern("rebirth")
-                task.wait(0.2)
+                task.wait(0.25)
                 ClickGuiByPattern("confirm")
                 ClickGuiByPattern("yes")
                 ClickGuiByPattern("do rebirth")
-                CallRemotes({"rebirth", "dorebirth", "playerrebirth"})
             end)
         end
         task.wait(1.5)
-    end
-end)
-
--- AUTO CHAOS
-task.spawn(function()
-    while IsRunning do
-        if Flags.AutoStartChaos and not IsInBattle() then
-            pcall(function()
-                ClickGuiByPattern("to chaos")
-                ClickGuiByPattern("chaos")
-                CallRemotes({"chaos", "startchaos", "enterchaos"})
-                task.wait(3)
-            end)
-        end
-        task.wait(1)
     end
 end)
 
@@ -374,10 +366,23 @@ task.spawn(function()
                 ClickGuiByPattern("skip")
                 ClickGuiByPattern("claim")
                 ClickGuiByPattern("close")
-                CallRemotes({"nothanks", "skip", "decline"})
             end)
         end
         task.wait(0.35)
+    end
+end)
+
+-- AUTO CHAOS
+task.spawn(function()
+    while IsRunning do
+        if Flags.AutoStartChaos and not IsInBattle() then
+            pcall(function()
+                ClickGuiByPattern("to chaos")
+                ClickGuiByPattern("chaos")
+                task.wait(3)
+            end)
+        end
+        task.wait(1)
     end
 end)
 
@@ -386,7 +391,6 @@ task.spawn(function()
     while IsRunning do
         if Flags.AutoOpenEggs and not IsInBattle() then
             pcall(function()
-                CallRemotes({"egg", "hatch", "openegg", "incubator", "buyegg", "startegg"})
                 ClickGuiByPattern("hatch")
                 ClickGuiByPattern("open")
                 ClickGuiByPattern("egg")
@@ -401,7 +405,6 @@ task.spawn(function()
     while IsRunning do
         if Flags.AutoFuseChickens and not IsInBattle() then
             pcall(function()
-                CallRemotes({"fuse", "merge", "chicken", "autofuse"})
                 ClickGuiByPattern("fuse")
                 ClickGuiByPattern("merge")
             end)
@@ -414,28 +417,16 @@ end)
 task.spawn(function()
     while IsRunning do
         if Flags.AutoUpgradeRecycler and not IsInBattle() then
-            pcall(function()
-                CallRemotes({"upgraderecycler", "recyclerupgrade"})
-                ClickGuiByPattern("upgrade recycler")
-            end)
+            pcall(function() ClickGuiByPattern("upgrade recycler") end)
         end
         if Flags.AutoUpgradeCoop and not IsInBattle() then
-            pcall(function()
-                CallRemotes({"upgradecoop", "coopupgrade", "upgradeplot"})
-                ClickGuiByPattern("upgrade coop")
-            end)
+            pcall(function() ClickGuiByPattern("upgrade coop") end)
         end
         if Flags.AutoUpgradeFeeder and not IsInBattle() then
-            pcall(function()
-                CallRemotes({"upgradefeeder", "feederupgrade"})
-                ClickGuiByPattern("upgrade feeder")
-            end)
+            pcall(function() ClickGuiByPattern("upgrade feeder") end)
         end
         if Flags.AutoBuyFeeders and not IsInBattle() then
-            pcall(function()
-                CallRemotes({"buyfeeder", "purchasefeeder", "feeder"})
-                ClickGuiByPattern("buy feeder")
-            end)
+            pcall(function() ClickGuiByPattern("buy feeder") end)
         end
         task.wait(1)
     end
@@ -453,6 +444,7 @@ Gui.DisplayOrder = 9999
 
 local function Shutdown()
     IsRunning = false
+    SetNoClip(false)
     for k in pairs(Flags) do
         Flags[k] = false
     end
