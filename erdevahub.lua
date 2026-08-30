@@ -91,6 +91,7 @@ local function IsInBattle()
         if g:IsA("ScreenGui") and g.Enabled then
             local n = g.Name:lower()
             if n:find("battle") or n:find("fight") or n:find("tower") or n:find("arena") then
+                -- check if battle healthbar or fighting UI is visible
                 for _, el in ipairs(g:GetDescendants()) do
                     if el:IsA("GuiObject") and el.Visible then
                         local en = el.Name:lower()
@@ -151,7 +152,7 @@ end
 -- AUTOMATION ENGINE
 --==================================================
 
--- 1. AUTO GRAB SCRAPS
+-- 1. AUTO GRAB SCRAPS (Super Sweep + Prompt + Click + Touch)
 task.spawn(function()
     while true do
         if Flags.AutoGrabScraps then
@@ -176,21 +177,25 @@ task.spawn(function()
                         local obj = item.Obj
                         local part = item.Part
 
+                        -- ProximityPrompt
                         local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true) or part:FindFirstChildWhichIsA("ProximityPrompt", true)
                         if prompt and fireproximityprompt then
                             fireproximityprompt(prompt)
                         end
 
+                        -- ClickDetector
                         local cd = obj:FindFirstChildWhichIsA("ClickDetector", true) or part:FindFirstChildWhichIsA("ClickDetector", true)
                         if cd and fireclickdetector then
                             fireclickdetector(cd)
                         end
 
+                        -- Touch Interest
                         if firetouchinterest then
                             firetouchinterest(root, part, 0)
                             firetouchinterest(root, part, 1)
                         end
 
+                        -- Physical Contact (Teleport Touch)
                         if (root.Position - part.Position).Magnitude < 120 then
                             local savedCF = root.CFrame
                             root.CFrame = part.CFrame + Vector3.new(0, 1, 0)
@@ -213,18 +218,22 @@ task.spawn(function()
         if Flags.AutoStartTower then
             pcall(function()
                 if not isTowerInProgress then
+                    -- Check if not already in battle
                     if not IsInBattle() then
+                        -- Start Tower
                         ClickGuiByPattern("tower")
                         CallRemotes({"tower", "starttower", "entertower"})
                         TouchPads({"tower"})
                         isTowerInProgress = true
 
+                        -- Wait for battle to start and finish
                         task.wait(2)
                         local maxWait = 90
                         local elapsed = 0
                         while elapsed < maxWait and Flags.AutoStartTower do
                             task.wait(1)
                             elapsed = elapsed + 1
+                            -- Auto-click victory / claim / next floor / no thanks
                             ClickGuiByPattern("claim")
                             ClickGuiByPattern("next floor")
                             ClickGuiByPattern("victory")
@@ -233,6 +242,7 @@ task.spawn(function()
                             ClickGuiByPattern("skip")
                             ClickGuiByPattern("continue")
 
+                            -- If battle UI is gone, chicken has finished fighting
                             if not IsInBattle() and elapsed > 5 then
                                 break
                             end
@@ -267,7 +277,7 @@ task.spawn(function()
     end
 end)
 
--- 4. AUTO NO THANKS / CLAIM
+-- 4. AUTO NO THANKS / AUTO CLAIM
 task.spawn(function()
     while true do
         if Flags.AutoNoThanks then
