@@ -80,7 +80,7 @@ local function WalkTo(targetPos, timeout, stopDist)
     local root = GetRoot()
     if not hum or not root then return false end
     stopDist = stopDist or 3.0
-    timeout  = timeout  or 5.0
+    timeout  = timeout  or 4.5
     local t0 = tick()
     while IsRunning and FlatDist(root.Position, targetPos) > stopDist and (tick() - t0) < timeout do
         hum:MoveTo(targetPos)
@@ -111,6 +111,19 @@ local function ClickGuiButton(btn)
         end
         if firesignal then firesignal(btn.MouseButton1Click) end
     end)
+end
+
+local function DismissAllPopups()
+    local pg = player:FindFirstChild("PlayerGui")
+    if not pg then return end
+    for _, b in ipairs(pg:GetDescendants()) do
+        if (b:IsA("TextButton") or b:IsA("ImageButton")) and b.Visible then
+            local t = (b:IsA("TextButton") and b.Text:lower() or "") .. " " .. b.Name:lower()
+            if t:find("close") or t:find("cancel") or t:find("✕") or t:find("x") or t:find("no thanks") or t:find("nothanks") or t:find("skip") then
+                ClickGuiButton(b)
+            end
+        end
+    end
 end
 
 local function ClickGuiByPattern(pat)
@@ -207,8 +220,8 @@ end
 local function ExecutePadAction(keyword, guiPattern, remotePattern)
     local pad = FindPadByKeyword(keyword)
     if pad and pad.part and pad.part.Parent then
-        WalkTo(pad.part.Position, 3.0, 3.0)
-        task.wait(0.15)
+        WalkTo(pad.part.Position, 2.5, 3.0)
+        task.wait(0.1)
         if pad.prompt then
             if pad.prompt:IsA("ProximityPrompt") then
                 TriggerPrompt(pad.prompt)
@@ -219,7 +232,8 @@ local function ExecutePadAction(keyword, guiPattern, remotePattern)
     end
     if guiPattern then ClickGuiByPattern(guiPattern) end
     if remotePattern then TriggerRemote(remotePattern) end
-    task.wait(0.15)
+    task.wait(0.1)
+    DismissAllPopups()
 end
 
 local function GetHighestChickenLevel()
@@ -292,10 +306,13 @@ end
 
 local collectedScraps = 0
 local BlacklistedScraps = {}
+local lastUpgradeAttemptTime = 0
 
 task.spawn(function()
     while IsRunning do
         pcall(function()
+            DismissAllPopups()
+
             if IsInBattle() then
                 task.wait(0.8)
                 return
@@ -306,18 +323,6 @@ task.spawn(function()
                 task.wait(0.2)
                 return
             end
-
-            if Flags.AutoNoThanks then
-                ClickGuiByPattern("no thanks")
-                ClickGuiByPattern("nothanks")
-                ClickGuiByPattern("skip")
-                ClickGuiByPattern("claim")
-                ClickGuiByPattern("close")
-                ClickGuiByPattern("✕")
-                ClickGuiByPattern("x")
-            end
-
-            ClickGuiByPattern("close")
 
             if Flags.AutoOpenEggs then
                 ClickGuiByPattern("hatch")
@@ -342,7 +347,7 @@ task.spawn(function()
 
                 if foundRebirth then
                     ClickGuiByPattern("rebirth")
-                    task.wait(0.25)
+                    task.wait(0.2)
                     local confirm = false
                     if pg then
                         for _, b in ipairs(pg:GetDescendants()) do
@@ -377,6 +382,22 @@ task.spawn(function()
 
             local cap = tonumber(Flags.ScrapCapacity) or 20
             local recyclerPos = GetRecyclerPos()
+
+            if (tick() - lastUpgradeAttemptTime > 15.0) then
+                lastUpgradeAttemptTime = tick()
+                if (Flags.AutoBuyFeeders or Flags.AutoRebirth) and FindPadByKeyword("buy feeder") then
+                    ExecutePadAction("buy feeder", "buy feeder", "buy feeder")
+                end
+                if Flags.AutoUpgradeFeeder and FindPadByKeyword("upgrade feeder") then
+                    ExecutePadAction("upgrade feeder", "upgrade feeder", "feeder")
+                end
+                if Flags.AutoUpgradeRecycler and FindPadByKeyword("upgrade recycler") then
+                    ExecutePadAction("upgrade recycler", "upgrade recycler", "recycler")
+                end
+                if Flags.AutoUpgradeCoop and FindPadByKeyword("upgrade coop") then
+                    ExecutePadAction("upgrade coop", "upgrade coop", "coop")
+                end
+            end
 
             if Flags.AutoGrabScraps and (collectedScraps < cap) then
                 local best, bestDist = nil, 9999
