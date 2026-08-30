@@ -1,8 +1,9 @@
 --[[
-    ERDEVA HUB - Humanized & Safe Automation Engine
-    - Human-like walking scrap collector (Anti-Kick / Anti-Ban)
-    - Full clean shutdown on GUI close [X]
-    - Smart Scrap -> Tower -> Rebirth continuous loop
+    ERDEVA HUB - Fast & Safe State Machine
+    - Continuous Scrap Gathering (No Stalling / Ignore-Cache)
+    - Auto-Deposit to Recycler immediately when threshold reached
+    - Fast natural movement (35 studs/s - Anti-Kick safe)
+    - Clean Shutdown on GUI Close [X]
 ]]
 
 local Players = game:GetService("Players")
@@ -54,7 +55,7 @@ local Flags = {
 }
 
 --==================================================
--- UTILITIES & SAFETY ENGINE
+-- UTILITIES & MOVEMENT ENGINE
 --==================================================
 
 local function GetChar()
@@ -69,6 +70,32 @@ end
 local function GetHumanoid()
     local char = GetChar()
     return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+local function MoveToPosition(targetPos, maxWaitTime)
+    if not IsRunning then return false end
+    local root = GetRoot()
+    local hum = GetHumanoid()
+    if not root or not hum then return false end
+
+    local dist = (root.Position - targetPos).Magnitude
+    if dist <= 4 then return true end
+
+    local speed = 36
+    local duration = math.clamp(dist / speed, 0.1, maxWaitTime or 2.5)
+
+    hum:MoveTo(targetPos)
+    local tween = TweenService:Create(root, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
+        CFrame = CFrame.new(targetPos + Vector3.new(0, 2, 0))
+    })
+    tween:Play()
+
+    local start = tick()
+    while IsRunning and (root.Position - targetPos).Magnitude > 4 and (tick() - start < duration + 0.2) do
+        task.wait(0.05)
+    end
+    tween:Cancel()
+    return (root.Position - targetPos).Magnitude <= 5
 end
 
 local function ClickButton(btn)
@@ -145,91 +172,115 @@ local function CallRemotes(keywords, ...)
     end
 end
 
-local function TouchPads(keywords)
-    local root = GetRoot()
-    if not root or not IsRunning then return end
+local function FindRecycler()
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") then
-            local name = obj.Name:lower() .. " " .. (obj.Parent and obj.Parent.Name:lower() or "")
-            for _, k in ipairs(keywords) do
-                if name:find(k:lower()) then
-                    if firetouchinterest then
-                        firetouchinterest(root, obj, 0)
-                        firetouchinterest(root, obj, 1)
-                    end
-                    local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
-                    if prompt and fireproximityprompt then
-                        fireproximityprompt(prompt)
-                    end
-                end
-            end
-        end
-    end
-end
-
--- Find the nearest Scrap naturally on plot
-local function GetClosestScrap()
-    local root = GetRoot()
-    if not root then return nil end
-    local closest, minDistance = nil, 120
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if not IsRunning or not Flags.AutoGrabScraps then break end
         local n = obj.Name:lower()
-        local pn = obj.Parent and obj.Parent.Name:lower() or ""
-        if n:find("scrap") or n:find("trash") or n:find("drop") or n:find("debris") or pn:find("scrap") then
+        if (n:find("recycler") or n:find("recycle")) and not n:find("coop") then
             local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
             if part then
-                local dist = (root.Position - part.Position).Magnitude
-                if dist < minDistance then
-                    minDistance = dist
-                    closest = {Obj = obj, Part = part, Dist = dist}
-                end
+                return part, obj
             end
         end
     end
-    return closest
+    return nil, nil
 end
 
 --==================================================
--- AUTOMATION THREADS (HUMANIZED & SAFE)
+-- STATE MACHINE: SCRAP + RECYCLER ENGINE
 --==================================================
 
--- 1. HUMAN-LIKE SCRAP COLLECTOR (Natural Walk & Grab - Anti-Kick)
+local collectedScrapsCount = 0
+local IgnoredItems = {}
+
 task.spawn(function()
     while IsRunning do
         if Flags.AutoGrabScraps and not IsInBattle() then
             pcall(function()
                 local root = GetRoot()
-                local hum = GetHumanoid()
-                local target = GetClosestScrap()
+                if not root then task.wait(0.5) return end
 
-                if target and root and hum then
-                    if target.Dist <= 7 then
-                        -- Close enough: Natural grab
-                        local p = target.Obj:FindFirstChildWhichIsA("ProximityPrompt", true) or target.Part:FindFirstChildWhichIsA("ProximityPrompt", true)
-                        if p and fireproximityprompt then
-                            fireproximityprompt(p)
-                        end
-                        local cd = target.Obj:FindFirstChildWhichIsA("ClickDetector", true) or target.Part:FindFirstChildWhichIsA("ClickDetector", true)
-                        if cd and fireclickdetector then
-                            fireclickdetector(cd)
-                        end
+                -- 1. Deposit Check
+                if Flags.AutoRecycleScrap and collectedScrapsCount >= Flags.RecycleThreshold then
+                    local recPart, recModel = FindRecycler()
+                    if recPart then
+                        MoveToPosition(recPart.Position, 2.5)
+
+                        local prompt = recModel:FindFirstChildWhichIsA("ProximityPrompt", true) or recPart:FindFirstChildWhichIsA("ProximityPrompt", true)
+                        if prompt and fireproximityprompt then fireproximityprompt(prompt) end
+
+                        local cd = recModel:FindFirstChildWhichIsA("ClickDetector", true) or recPart:FindFirstChildWhichIsA("ClickDetector", true)
+                        if cd and fireclickdetector then fireclickdetector(cd) end
+
                         if firetouchinterest then
-                            firetouchinterest(root, target.Part, 0)
-                            firetouchinterest(root, target.Part, 1)
+                            firetouchinterest(root, recPart, 0)
+                            firetouchinterest(root, recPart, 1)
                         end
-                        CallRemotes({"scrap", "collect", "grab", "pickup"})
-                        task.wait(0.25)
-                    else
-                        -- Walk naturally towards scrap (Human-like)
-                        hum:MoveTo(target.Part.Position)
-                        local startTime = tick()
-                        while IsRunning and Flags.AutoGrabScraps and (root.Position - target.Part.Position).Magnitude > 6 and (tick() - startTime < 2) do
-                            task.wait(0.1)
+
+                        CallRemotes({"recycle", "deposit", "recycler"}, Flags.RecycleThreshold)
+                        ClickGuiByPattern("recycle")
+                        ClickGuiByPattern("deposit")
+
+                        task.wait(0.6)
+                        collectedScrapsCount = 0
+                        IgnoredItems = {}
+                    end
+                end
+
+                -- 2. Find closest valid scrap
+                local closestPart, closestObj = nil, nil
+                local minDistance = 140
+
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if not Flags.AutoGrabScraps or not IsRunning then break end
+                    if not IgnoredItems[obj] then
+                        local n = obj.Name:lower()
+                        local pn = obj.Parent and obj.Parent.Name:lower() or ""
+                        if (n:find("scrap") or n:find("trash") or n:find("drop") or n:find("debris") or pn:find("scrap")) and not n:find("feeder") and not n:find("recycler") then
+                            local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
+                            if part and not IgnoredItems[part] then
+                                local dist = (root.Position - part.Position).Magnitude
+                                if dist < minDistance then
+                                    minDistance = dist
+                                    closestPart = part
+                                    closestObj = obj
+                                end
+                            end
                         end
                     end
-                else
+                end
+
+                if closestPart and closestObj then
+                    MoveToPosition(closestPart.Position, 1.5)
+
+                    local prompt = closestObj:FindFirstChildWhichIsA("ProximityPrompt", true) or closestPart:FindFirstChildWhichIsA("ProximityPrompt", true)
+                    if prompt and fireproximityprompt then fireproximityprompt(prompt) end
+
+                    local cd = closestObj:FindFirstChildWhichIsA("ClickDetector", true) or closestPart:FindFirstChildWhichIsA("ClickDetector", true)
+                    if cd and fireclickdetector then fireclickdetector(cd) end
+
+                    if firetouchinterest then
+                        firetouchinterest(root, closestPart, 0)
+                        firetouchinterest(root, closestPart, 1)
+                    end
+
                     CallRemotes({"scrap", "collect", "grab", "pickup"})
+
+                    IgnoredItems[closestObj] = true
+                    IgnoredItems[closestPart] = true
+                    collectedScrapsCount = collectedScrapsCount + 1
+                    task.wait(0.1)
+                else
+                    if Flags.AutoRecycleScrap and collectedScrapsCount > 0 then
+                        local recPart, recModel = FindRecycler()
+                        if recPart then
+                            MoveToPosition(recPart.Position, 2)
+                            CallRemotes({"recycle", "deposit", "recycler"}, collectedScrapsCount)
+                            ClickGuiByPattern("recycle")
+                            task.wait(0.5)
+                            collectedScrapsCount = 0
+                        end
+                    end
+                    IgnoredItems = {}
                     task.wait(0.4)
                 end
             end)
@@ -239,7 +290,11 @@ task.spawn(function()
     end
 end)
 
--- 2. AUTO TOWER (Smart Matchmaking -> Battle -> Claim -> Return)
+--==================================================
+-- OTHER AUTOMATION THREADS
+--==================================================
+
+-- AUTO TOWER
 local isTowerBusy = false
 task.spawn(function()
     while IsRunning do
@@ -249,15 +304,13 @@ task.spawn(function()
                     isTowerBusy = true
                     ClickGuiByPattern("tower")
                     CallRemotes({"tower", "starttower", "entertower"})
-                    TouchPads({"tower"})
 
                     task.wait(2.5)
                     local elapsed = 0
-                    while elapsed < 100 and IsRunning and Flags.AutoStartTower do
+                    while elapsed < 90 and IsRunning and Flags.AutoStartTower do
                         task.wait(1)
                         elapsed = elapsed + 1
 
-                        -- Auto-Claim battle rewards & skip dialogs
                         ClickGuiByPattern("claim")
                         ClickGuiByPattern("next floor")
                         ClickGuiByPattern("victory")
@@ -265,13 +318,12 @@ task.spawn(function()
                         ClickGuiByPattern("nothanks")
                         ClickGuiByPattern("continue")
 
-                        -- Battle finished
                         if not IsInBattle() and elapsed > 5 then
                             break
                         end
                     end
 
-                    task.wait(2)
+                    task.wait(1.5)
                     isTowerBusy = false
                 end
             end)
@@ -280,26 +332,24 @@ task.spawn(function()
     end
 end)
 
--- 3. AUTO REBIRTH (Smooth Detection & Execution)
+-- AUTO REBIRTH
 task.spawn(function()
     while IsRunning do
         if Flags.AutoRebirth and not IsInBattle() then
             pcall(function()
-                -- Check if Rebirth UI or Remote is ready
                 ClickGuiByPattern("rebirth")
-                task.wait(0.3)
+                task.wait(0.2)
                 ClickGuiByPattern("confirm")
                 ClickGuiByPattern("yes")
                 ClickGuiByPattern("do rebirth")
                 CallRemotes({"rebirth", "dorebirth", "playerrebirth"})
-                TouchPads({"rebirth"})
             end)
         end
         task.wait(1.5)
     end
 end)
 
--- 4. AUTO CHAOS
+-- AUTO CHAOS
 task.spawn(function()
     while IsRunning do
         if Flags.AutoStartChaos and not IsInBattle() then
@@ -307,7 +357,6 @@ task.spawn(function()
                 ClickGuiByPattern("to chaos")
                 ClickGuiByPattern("chaos")
                 CallRemotes({"chaos", "startchaos", "enterchaos"})
-                TouchPads({"chaos"})
                 task.wait(3)
             end)
         end
@@ -315,7 +364,7 @@ task.spawn(function()
     end
 end)
 
--- 5. AUTO NO THANKS / POPUP BYPASS
+-- AUTO NO THANKS
 task.spawn(function()
     while IsRunning do
         if Flags.AutoNoThanks then
@@ -332,13 +381,12 @@ task.spawn(function()
     end
 end)
 
--- 6. AUTO OPEN EGGS
+-- AUTO OPEN EGGS
 task.spawn(function()
     while IsRunning do
         if Flags.AutoOpenEggs and not IsInBattle() then
             pcall(function()
                 CallRemotes({"egg", "hatch", "openegg", "incubator", "buyegg", "startegg"})
-                TouchPads({"egg", "hatch", "incubator"})
                 ClickGuiByPattern("hatch")
                 ClickGuiByPattern("open")
                 ClickGuiByPattern("egg")
@@ -348,13 +396,12 @@ task.spawn(function()
     end
 end)
 
--- 7. AUTO FUSE CHICKENS
+-- AUTO FUSE CHICKENS
 task.spawn(function()
     while IsRunning do
         if Flags.AutoFuseChickens and not IsInBattle() then
             pcall(function()
                 CallRemotes({"fuse", "merge", "chicken", "autofuse"})
-                TouchPads({"fuse", "merge"})
                 ClickGuiByPattern("fuse")
                 ClickGuiByPattern("merge")
             end)
@@ -363,47 +410,29 @@ task.spawn(function()
     end
 end)
 
--- 8. AUTO RECYCLE SCRAP
-task.spawn(function()
-    while IsRunning do
-        if Flags.AutoRecycleScrap and not IsInBattle() then
-            pcall(function()
-                TouchPads({"recycler", "recycle"})
-                CallRemotes({"recycle", "deposit", "recycler"}, Flags.RecycleThreshold)
-                ClickGuiByPattern("recycle")
-            end)
-        end
-        task.wait(1)
-    end
-end)
-
--- 9. AUTO UPGRADE RECYCLER, COOP & FEEDERS
+-- AUTO UPGRADE RECYCLER, COOP & FEEDERS
 task.spawn(function()
     while IsRunning do
         if Flags.AutoUpgradeRecycler and not IsInBattle() then
             pcall(function()
-                TouchPads({"upgraderecycler", "recyclerupgrade"})
                 CallRemotes({"upgraderecycler", "recyclerupgrade"})
                 ClickGuiByPattern("upgrade recycler")
             end)
         end
         if Flags.AutoUpgradeCoop and not IsInBattle() then
             pcall(function()
-                TouchPads({"coop", "upgrade coop", "upgradeplot"})
                 CallRemotes({"upgradecoop", "coopupgrade", "upgradeplot"})
                 ClickGuiByPattern("upgrade coop")
             end)
         end
         if Flags.AutoUpgradeFeeder and not IsInBattle() then
             pcall(function()
-                TouchPads({"upgrade feeder", "feeder"})
                 CallRemotes({"upgradefeeder", "feederupgrade"})
                 ClickGuiByPattern("upgrade feeder")
             end)
         end
         if Flags.AutoBuyFeeders and not IsInBattle() then
             pcall(function()
-                TouchPads({"buy feeder", "feeder"})
                 CallRemotes({"buyfeeder", "purchasefeeder", "feeder"})
                 ClickGuiByPattern("buy feeder")
             end)
@@ -435,7 +464,7 @@ local function Shutdown()
     if Gui then
         Gui:Destroy()
     end
-    print("[ERDEVA HUB] Successfully closed and all features terminated.")
+    print("[ERDEVA HUB] Terminated.")
 end
 
 --==================================================
@@ -471,7 +500,7 @@ Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
 
--- Close Button (Stops everything & closes)
+-- Close Button
 local Close = Instance.new("TextButton", Top)
 Close.Size = UDim2.fromOffset(24, 24)
 Close.Position = UDim2.new(1, -28, 0.5, -12)
@@ -727,4 +756,4 @@ AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
 SetTab("Farm")
-print("[ERDEVA HUB] Humanized automation ready.")
+print("[ERDEVA HUB] State machine ready.")
