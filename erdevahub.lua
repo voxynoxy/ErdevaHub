@@ -1,5 +1,7 @@
 --[[
-    ERDEVA HUB - Smart Master-Sync Automation Engine
+    ERDEVA HUB - Smart Master-Sync & Ghost-Fence Automation
+    - Local Fence Ghosting (CanCollide = false on all coop fences):
+      Character walks seamlessly in and out of coop without ever getting stuck!
     - Master Auto-Rebirth: 1-Click activates full AFK cycle:
       * Auto Grab Scraps (Capacity: 20)
       * Auto Recycle Scrap
@@ -7,8 +9,7 @@
       * Auto Upgrade Feeder & Coop
       * Auto Start Tower
       * Auto No Thanks
-    - Raycast wall/fence detection with jump momentum
-    - 100% Native Roblox physics (No exploit function hooks)
+    - 100% Native Roblox physics (Safe from kicks)
     - Plot-Locked Recycler
     - Clean Shutdown on GUI Close [X]
 ]]
@@ -65,7 +66,7 @@ local Flags = {
 local ToggleUpdaters = {}
 
 --==================================================
--- NAVIGATION & RAYCAST FENCE-VAULTING
+-- GHOST-FENCE & NATIVE NAVIGATION ENGINE
 --==================================================
 
 local function GetChar()
@@ -82,12 +83,33 @@ local function GetHumanoid()
     return char and char:FindFirstChildOfClass("Humanoid")
 end
 
+-- Disable collisions on all fence/gate parts so character never gets blocked
+task.spawn(function()
+    while IsRunning do
+        pcall(function()
+            for _, obj in ipairs(workspace:GetDescendants()) do
+                if not IsRunning then break end
+                if obj:IsA("BasePart") then
+                    local n = obj.Name:lower()
+                    local pn = obj.Parent and obj.Parent.Name:lower() or ""
+                    if n:find("fence") or n:find("gate") or n:find("barrier") or pn:find("fence") or pn:find("gate") then
+                        if obj.CanCollide then
+                            obj.CanCollide = false
+                        end
+                    end
+                end
+            end
+        end)
+        task.wait(2)
+    end
+end)
+
+-- Natural smooth walk with jump fallback
 local function WalkTo(targetPos, maxWait)
     if not IsRunning then return false end
     local hum = GetHumanoid()
     local root = GetRoot()
-    local char = GetChar()
-    if not hum or not root or not char then return false end
+    if not hum or not root then return false end
 
     local dist = (root.Position - targetPos).Magnitude
     if dist <= 2.5 then return true end
@@ -99,24 +121,14 @@ local function WalkTo(targetPos, maxWait)
     local timeout = maxWait or 3.5
 
     while IsRunning and (root.Position - targetPos).Magnitude > 2.5 and (tick() - start < timeout) do
-        task.wait(0.1)
-
-        local rayOrigin = root.Position - Vector3.new(0, 1, 0)
-        local toTarget = (targetPos - root.Position)
-        local flatToTarget = Vector3.new(toTarget.X, 0, toTarget.Z)
-        local dirUnit = flatToTarget.Magnitude > 0 and flatToTarget.Unit or Vector3.new(0, 0, 1)
-
-        local rayParams = RaycastParams.new()
-        rayParams.FilterDescendantsInstances = {char}
-        rayParams.FilterType = Enum.RaycastFilterType.Exclude
-
-        local hit = workspace:Raycast(rayOrigin, dirUnit * 3.5, rayParams)
+        task.wait(0.12)
         local movedDist = (root.Position - lastPos).Magnitude
-
-        if hit or (movedDist < 0.35 and (root.Position - targetPos).Magnitude > 3.0) then
+        if movedDist < 0.25 and (root.Position - targetPos).Magnitude > 2.8 then
             hum.Jump = true
-            hum:Move(dirUnit, false)
-            task.wait(0.25)
+            local dir = (targetPos - root.Position)
+            local flatDir = Vector3.new(dir.X, 0, dir.Z).Unit
+            hum:Move(flatDir, false)
+            task.wait(0.2)
             hum:MoveTo(targetPos)
         end
         lastPos = root.Position
@@ -868,4 +880,4 @@ AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
 SetTab("Farm")
-print("[ERDEVA HUB] Auto-Rebirth Master Sync Ready.")
+print("[ERDEVA HUB] Ghost-Fence Navigation Active.")
