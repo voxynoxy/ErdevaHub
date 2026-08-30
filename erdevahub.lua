@@ -45,7 +45,7 @@ local Flags = {
 }
 
 --==================================================
--- GAME UTILITIES & KNIT ENGINE
+-- UTILITIES
 --==================================================
 
 local function GetRoot()
@@ -78,6 +78,27 @@ local function ClickGuiByPattern(pattern)
             if text:find(pattern) then
                 ClickButton(b)
                 return true
+            end
+        end
+    end
+    return false
+end
+
+local function IsInBattle()
+    local pGui = player:FindFirstChild("PlayerGui")
+    if not pGui then return false end
+    for _, g in ipairs(pGui:GetChildren()) do
+        if g:IsA("ScreenGui") and g.Enabled then
+            local n = g.Name:lower()
+            if n:find("battle") or n:find("fight") or n:find("tower") or n:find("arena") then
+                for _, el in ipairs(g:GetDescendants()) do
+                    if el:IsA("GuiObject") and el.Visible then
+                        local en = el.Name:lower()
+                        if en:find("health") or en:find("hp") or en:find("enemy") or en:find("round") then
+                            return true
+                        end
+                    end
+                end
             end
         end
     end
@@ -126,6 +147,10 @@ local function TouchPads(keywords)
     end
 end
 
+--==================================================
+-- AUTOMATION ENGINE
+--==================================================
+
 -- 1. AUTO GRAB SCRAPS
 task.spawn(function()
     while true do
@@ -133,35 +158,151 @@ task.spawn(function()
             pcall(function()
                 local root = GetRoot()
                 if root then
+                    local scrapList = {}
                     for _, obj in ipairs(workspace:GetDescendants()) do
                         if not Flags.AutoGrabScraps then break end
                         local n = obj.Name:lower()
-                        if n:find("scrap") or n:find("trash") or n:find("drop") or n:find("debris") then
+                        local pn = obj.Parent and obj.Parent.Name:lower() or ""
+                        if n:find("scrap") or n:find("trash") or n:find("drop") or n:find("debris") or pn:find("scrap") then
                             local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
                             if part then
-                                if not part.Anchored then
-                                    part.CFrame = root.CFrame
-                                end
-                                if firetouchinterest then
-                                    firetouchinterest(root, part, 0)
-                                    firetouchinterest(root, part, 1)
-                                end
-                                local p = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
-                                if p and fireproximityprompt then
-                                    fireproximityprompt(p)
-                                end
+                                table.insert(scrapList, {Obj = obj, Part = part})
                             end
                         end
                     end
+
+                    for _, item in ipairs(scrapList) do
+                        if not Flags.AutoGrabScraps then break end
+                        local obj = item.Obj
+                        local part = item.Part
+
+                        local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true) or part:FindFirstChildWhichIsA("ProximityPrompt", true)
+                        if prompt and fireproximityprompt then
+                            fireproximityprompt(prompt)
+                        end
+
+                        local cd = obj:FindFirstChildWhichIsA("ClickDetector", true) or part:FindFirstChildWhichIsA("ClickDetector", true)
+                        if cd and fireclickdetector then
+                            fireclickdetector(cd)
+                        end
+
+                        if firetouchinterest then
+                            firetouchinterest(root, part, 0)
+                            firetouchinterest(root, part, 1)
+                        end
+
+                        if (root.Position - part.Position).Magnitude < 120 then
+                            local savedCF = root.CFrame
+                            root.CFrame = part.CFrame + Vector3.new(0, 1, 0)
+                            task.wait(0.06)
+                            root.CFrame = savedCF
+                        end
+                    end
                 end
-                CallRemotes({"scrap", "collect", "grab", "pickup"})
+                CallRemotes({"scrap", "collect", "grab", "pickup", "drop"})
             end)
         end
-        task.wait(0.15)
+        task.wait(0.4)
     end
 end)
 
--- 2. AUTO OPEN EGGS
+-- 2. AUTO TOWER (Smart Battle Waiter)
+local isTowerInProgress = false
+task.spawn(function()
+    while true do
+        if Flags.AutoStartTower then
+            pcall(function()
+                if not isTowerInProgress then
+                    if not IsInBattle() then
+                        ClickGuiByPattern("tower")
+                        CallRemotes({"tower", "starttower", "entertower"})
+                        TouchPads({"tower"})
+                        isTowerInProgress = true
+
+                        task.wait(2)
+                        local maxWait = 90
+                        local elapsed = 0
+                        while elapsed < maxWait and Flags.AutoStartTower do
+                            task.wait(1)
+                            elapsed = elapsed + 1
+                            ClickGuiByPattern("claim")
+                            ClickGuiByPattern("next floor")
+                            ClickGuiByPattern("victory")
+                            ClickGuiByPattern("no thanks")
+                            ClickGuiByPattern("nothanks")
+                            ClickGuiByPattern("skip")
+                            ClickGuiByPattern("continue")
+
+                            if not IsInBattle() and elapsed > 5 then
+                                break
+                            end
+                        end
+                        task.wait(1.5)
+                        isTowerInProgress = false
+                    end
+                end
+            end)
+        else
+            isTowerInProgress = false
+        end
+        task.wait(1)
+    end
+end)
+
+-- 3. AUTO CHAOS
+task.spawn(function()
+    while true do
+        if Flags.AutoStartChaos then
+            pcall(function()
+                if not IsInBattle() then
+                    ClickGuiByPattern("to chaos")
+                    ClickGuiByPattern("chaos")
+                    CallRemotes({"chaos", "startchaos", "enterchaos"})
+                    TouchPads({"chaos"})
+                    task.wait(3)
+                end
+            end)
+        end
+        task.wait(1)
+    end
+end)
+
+-- 4. AUTO NO THANKS / CLAIM
+task.spawn(function()
+    while true do
+        if Flags.AutoNoThanks then
+            pcall(function()
+                ClickGuiByPattern("no thanks")
+                ClickGuiByPattern("nothanks")
+                ClickGuiByPattern("skip")
+                ClickGuiByPattern("claim")
+                ClickGuiByPattern("close")
+                CallRemotes({"nothanks", "skip", "decline"})
+            end)
+        end
+        task.wait(0.3)
+    end
+end)
+
+-- 5. AUTO REBIRTH
+task.spawn(function()
+    while true do
+        if Flags.AutoRebirth then
+            pcall(function()
+                ClickGuiByPattern("rebirth")
+                task.wait(0.2)
+                ClickGuiByPattern("confirm")
+                ClickGuiByPattern("yes")
+                ClickGuiByPattern("do rebirth")
+                CallRemotes({"rebirth", "dorebirth", "playerrebirth"})
+                TouchPads({"rebirth"})
+            end)
+        end
+        task.wait(0.8)
+    end
+end)
+
+-- 6. AUTO OPEN EGGS
 task.spawn(function()
     while true do
         if Flags.AutoOpenEggs then
@@ -177,7 +318,7 @@ task.spawn(function()
     end
 end)
 
--- 3. AUTO FUSE CHICKENS
+-- 7. AUTO FUSE CHICKENS
 task.spawn(function()
     while true do
         if Flags.AutoFuseChickens then
@@ -192,7 +333,7 @@ task.spawn(function()
     end
 end)
 
--- 4. AUTO RECYCLE SCRAP
+-- 8. AUTO RECYCLE SCRAP
 task.spawn(function()
     while true do
         if Flags.AutoRecycleScrap then
@@ -206,7 +347,7 @@ task.spawn(function()
     end
 end)
 
--- 5. AUTO UPGRADE RECYCLER
+-- 9. AUTO UPGRADE RECYCLER & PLOT
 task.spawn(function()
     while true do
         if Flags.AutoUpgradeRecycler then
@@ -216,29 +357,6 @@ task.spawn(function()
                 ClickGuiByPattern("upgrade recycler")
             end)
         end
-        task.wait(1)
-    end
-end)
-
--- 6. AUTO REBIRTH
-task.spawn(function()
-    while true do
-        if Flags.AutoRebirth then
-            pcall(function()
-                ClickGuiByPattern("rebirth")
-                ClickGuiByPattern("confirm")
-                ClickGuiByPattern("yes")
-                CallRemotes({"rebirth", "dorebirth", "playerrebirth"})
-                TouchPads({"rebirth"})
-            end)
-        end
-        task.wait(0.5)
-    end
-end)
-
--- 7. PLOT UPGRADES
-task.spawn(function()
-    while true do
         if Flags.AutoUpgradeCoop then
             pcall(function()
                 TouchPads({"coop", "upgrade coop", "upgradeplot"})
@@ -261,37 +379,6 @@ task.spawn(function()
             end)
         end
         task.wait(0.8)
-    end
-end)
-
--- 8. BATTLE HANDLERS
-task.spawn(function()
-    while true do
-        if Flags.AutoStartTower then
-            pcall(function()
-                ClickGuiByPattern("tower")
-                CallRemotes({"tower", "starttower", "entertower"})
-                TouchPads({"tower"})
-            end)
-        end
-        if Flags.AutoStartChaos then
-            pcall(function()
-                ClickGuiByPattern("to chaos")
-                ClickGuiByPattern("chaos")
-                CallRemotes({"chaos", "startchaos", "enterchaos"})
-                TouchPads({"chaos"})
-            end)
-        end
-        if Flags.AutoNoThanks then
-            pcall(function()
-                ClickGuiByPattern("no thanks")
-                ClickGuiByPattern("nothanks")
-                ClickGuiByPattern("skip")
-                ClickGuiByPattern("claim")
-                CallRemotes({"nothanks", "skip", "decline"})
-            end)
-        end
-        task.wait(0.3)
     end
 end)
 
@@ -360,7 +447,7 @@ Min.MouseButton1Click:Connect(function()
     tw(Main, {Size = UDim2.fromOffset(W, minState and 34 or H)}, 0.15)
 end)
 
--- Drag System
+-- Drag
 local drag, dStart, fStart
 Top.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
@@ -377,7 +464,7 @@ UserInputService.InputChanged:Connect(function(i)
     end
 end)
 
--- Tab Bar
+-- TabBar
 local TabFrame = Instance.new("Frame", Main)
 TabFrame.Size = UDim2.new(1, 0, 0, 28)
 TabFrame.Position = UDim2.fromOffset(0, 34)
@@ -387,7 +474,7 @@ TabFrame.BorderSizePixel = 0
 local TabList = Instance.new("UIListLayout", TabFrame)
 TabList.FillDirection = Enum.FillDirection.Horizontal
 
--- Content Area
+-- Content
 local Content = Instance.new("ScrollingFrame", Main)
 Content.Size = UDim2.new(1, -12, 1, -68)
 Content.Position = UDim2.fromOffset(6, 64)
