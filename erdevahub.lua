@@ -1,8 +1,8 @@
 --[[
-    ERDEVA HUB - 100% Pure Native Human Automation
-    - Zero exploit function calls (No fireproximityprompt / fireclickdetector / firetouchinterest)
-    - 100% Natural Roblox physics touch (Game handles pickup & deposit natively)
-    - Auto-Jump when walking against fences
+    ERDEVA HUB - Raycast Fence-Vaulting & Pure Native Automation
+    - Raycast wall/fence detection with forward jump momentum
+    - Smoothly hops over circular coop fences (In & Out)
+    - 100% Native Roblox physics (No exploit function hooks)
     - Plot-Locked Recycler & Scrap Stacking
     - Screen-Clamped Dragging (TopBar never gets lost off-screen)
     - Full clean termination on [X]
@@ -58,7 +58,7 @@ local Flags = {
 }
 
 --==================================================
--- PURE NATIVE MOVEMENT (ZERO EXPLOIT HOOKS)
+-- RAYCAST FENCE-VAULTING NAVIGATION
 --==================================================
 
 local function GetChar()
@@ -75,11 +75,13 @@ local function GetHumanoid()
     return char and char:FindFirstChildOfClass("Humanoid")
 end
 
+-- Smart Walk with Raycast Wall/Fence Jump Vaulting
 local function WalkTo(targetPos, maxWait)
     if not IsRunning then return false end
     local hum = GetHumanoid()
     local root = GetRoot()
-    if not hum or not root then return false end
+    local char = GetChar()
+    if not hum or not root or not char then return false end
 
     local dist = (root.Position - targetPos).Magnitude
     if dist <= 2.5 then return true end
@@ -88,13 +90,29 @@ local function WalkTo(targetPos, maxWait)
 
     local start = tick()
     local lastPos = root.Position
-    local timeout = maxWait or 3.0
+    local timeout = maxWait or 3.5
 
     while IsRunning and (root.Position - targetPos).Magnitude > 2.5 and (tick() - start < timeout) do
-        task.wait(0.15)
-        if (root.Position - lastPos).Magnitude < 0.5 and (root.Position - targetPos).Magnitude > 3.0 then
+        task.wait(0.1)
+
+        -- Raycast to detect fence/wall in front of player
+        local rayOrigin = root.Position - Vector3.new(0, 1, 0)
+        local toTarget = (targetPos - root.Position)
+        local flatToTarget = Vector3.new(toTarget.X, 0, toTarget.Z)
+        local dirUnit = flatToTarget.Magnitude > 0 and flatToTarget.Unit or Vector3.new(0, 0, 1)
+
+        local rayParams = RaycastParams.new()
+        rayParams.FilterDescendantsInstances = {char}
+        rayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+        local hit = workspace:Raycast(rayOrigin, dirUnit * 3.5, rayParams)
+        local movedDist = (root.Position - lastPos).Magnitude
+
+        -- If fence detected or movement blocked, vault forward with jump
+        if hit or (movedDist < 0.35 and (root.Position - targetPos).Magnitude > 3.0) then
             hum.Jump = true
-            task.wait(0.2)
+            hum:Move(dirUnit, false) -- forward jump momentum over fence
+            task.wait(0.25)
             hum:MoveTo(targetPos)
         end
         lastPos = root.Position
@@ -228,7 +246,7 @@ local function IsInBattle()
 end
 
 --==================================================
--- PURE NATIVE HARVEST & DEPOSIT (100% SAFE)
+-- STATE MACHINE: NATURAL HARVEST & RECYCLER
 --==================================================
 
 local collectedCount = 0
@@ -306,6 +324,7 @@ end)
 -- OTHER AUTOMATIONS
 --==================================================
 
+-- AUTO TOWER
 local isTowerBusy = false
 task.spawn(function()
     while IsRunning do
@@ -763,4 +782,4 @@ AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
 SetTab("Farm")
-print("[ERDEVA HUB] 100% Undetectable Natural Engine Active.")
+print("[ERDEVA HUB] Raycast Vaulting Engine Ready.")
