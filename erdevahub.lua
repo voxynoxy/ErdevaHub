@@ -3,6 +3,7 @@ local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 
@@ -55,6 +56,20 @@ local function GetHumanoid()
     local c = GetChar()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
+
+-- Safe Noclip to prevent getting stuck in fences and walls
+RunService.Stepped:Connect(function()
+    if IsRunning and (Flags.AutoGrabScraps or Flags.AutoRecycleScrap or Flags.AutoBuyFeeders or Flags.AutoUpgradeFeeder or Flags.AutoUpgradeRecycler) then
+        local char = GetChar()
+        if char then
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") and part.CanCollide then
+                    part.CanCollide = false
+                end
+            end
+        end
+    end
+end)
 
 local function FlatDist(a, b)
     return Vector2.new(a.X - b.X, a.Z - b.Z).Magnitude
@@ -323,8 +338,8 @@ task.spawn(function()
                         end
                     end
                     if confirm then
-                        WalkAndFireAll({"upgrade feeder","upgrade coop","buy feeder"})
-                        ClickGuiByPattern("upgrade feeder") ClickGuiByPattern("upgrade coop") ClickGuiByPattern("buy feeder")
+                        WalkAndFireAll({"upgrade feeder","buy feeder"})
+                        ClickGuiByPattern("upgrade feeder") ClickGuiByPattern("buy feeder")
                         task.wait(0.3)
                         ClickGuiByPattern("confirm") ClickGuiByPattern("yes") ClickGuiByPattern("do rebirth") ClickGuiByPattern("claim rebirth")
                         task.wait(3.5)
@@ -526,7 +541,7 @@ local function AddToggle(parent, label, key)
         SetFlag(key, ns)
         if key == "AutoRebirth" then
             for _, fk in ipairs({"AutoGrabScraps","AutoRecycleScrap","AutoUpgradeRecycler",
-                                  "AutoBuyFeeders","AutoUpgradeFeeder","AutoUpgradeCoop",
+                                  "AutoBuyFeeders","AutoUpgradeFeeder",
                                   "AutoStartTower","AutoNoThanks"}) do
                 SetFlag(fk, ns)
             end
@@ -596,23 +611,23 @@ do
     local s = Instance.new("UIStroke", wrapper) s.Color=C.Red s.Thickness=1
     local hint = Instance.new("TextLabel", wrapper)
     hint.Size = UDim2.new(1,-8,0,18) hint.Position = UDim2.fromOffset(4,2)
-    hint.BackgroundTransparency = 1 hint.Text = "⚠ Berdiri di Recycler kamu, lalu klik:"
+    hint.BackgroundTransparency = 1 hint.Text = "[!] Stand on your Recycler pad, then click:"
     hint.TextColor3 = Color3.fromRGB(255,200,50) hint.TextSize = 10
     hint.Font = Enum.Font.GothamBold hint.TextXAlignment = Enum.TextXAlignment.Left
     local lockBtn = Instance.new("TextButton", wrapper)
     lockBtn.Size = UDim2.new(1,-8,0,28) lockBtn.Position = UDim2.fromOffset(4,22)
     lockBtn.BackgroundColor3 = Color3.fromRGB(180,30,30)
-    lockBtn.Text = "📌 KUNCI POSISI RECYCLER SAYA"
+    lockBtn.Text = "[LOCK] Set My Recycler Position"
     lockBtn.TextColor3 = Color3.fromRGB(255,255,255)
     lockBtn.TextSize = 11 lockBtn.Font = Enum.Font.GothamBold
     Instance.new("UICorner", lockBtn).CornerRadius = UDim.new(0,5)
     lockBtn.MouseButton1Click:Connect(function()
         if LockRecycler() then
-            lockBtn.Text = "TERKUNCI!"
+            lockBtn.Text = "[OK] Recycler Position Locked"
             lockBtn.BackgroundColor3 = Color3.fromRGB(20,120,20)
             task.delay(2, function()
                 if lockBtn and lockBtn.Parent then
-                    lockBtn.Text = "KUNCI POSISI RECYCLER"
+                    lockBtn.Text = "[LOCK] Set My Recycler Position"
                     lockBtn.BackgroundColor3 = Color3.fromRGB(180,30,30)
                 end
             end)
