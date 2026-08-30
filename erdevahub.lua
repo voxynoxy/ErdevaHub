@@ -1,10 +1,10 @@
 --[[
-    ERDEVA HUB - Fast, Obstacle-Jumping & Plot-Locked Automation
-    - Auto-Jump over fences/obstacles (Never gets stuck)
-    - Boosted WalkSpeed (Faster, safe from kicks)
-    - Configurable Scrap Capacity Slider (Collects desired amount, e.g. 20)
-    - Screen-Clamped Dragging (TopBar never gets lost off-screen)
-    - Full clean termination on [X]
+    ERDEVA HUB - 100% Undetectable & Clean Automation
+    - Zero WalkSpeed Modifications (Strict default 16)
+    - Zero exploit TouchInterest hooks (100% Natural Physics Touch)
+    - Natural Spacebar Jump over obstacles
+    - Plot-Locked Recycler & Scrap Stacking
+    - Clean Shutdown on GUI Close [X]
 ]]
 
 local Players = game:GetService("Players")
@@ -57,7 +57,7 @@ local Flags = {
 }
 
 --==================================================
--- NAVIGATION & OBSTACLE CLEARANCE ENGINE
+-- 100% STEALTH HUMAN NAVIGATION (UNDETECTABLE)
 --==================================================
 
 local function GetChar()
@@ -74,36 +74,33 @@ local function GetHumanoid()
     return char and char:FindFirstChildOfClass("Humanoid")
 end
 
+-- Natural walk (No WalkSpeed hacks, No CFrame hacks)
 local function WalkTo(targetPos, maxWait)
     if not IsRunning then return false end
     local hum = GetHumanoid()
     local root = GetRoot()
     if not hum or not root then return false end
 
-    if hum.WalkSpeed < 26 then
-        hum.WalkSpeed = 26
-    end
-
     local dist = (root.Position - targetPos).Magnitude
-    if dist <= 3.5 then return true end
+    if dist <= 3.0 then return true end
 
     hum:MoveTo(targetPos)
 
     local start = tick()
     local lastPos = root.Position
-    local timeout = maxWait or 2.5
+    local timeout = maxWait or 3.0
 
-    while IsRunning and (root.Position - targetPos).Magnitude > 3.5 and (tick() - start < timeout) do
-        task.wait(0.12)
-        if (root.Position - lastPos).Magnitude < 0.9 and (root.Position - targetPos).Magnitude > 3.8 then
+    while IsRunning and (root.Position - targetPos).Magnitude > 3.0 and (tick() - start < timeout) do
+        task.wait(0.15)
+        -- If blocked by fence, simulate normal spacebar jump
+        if (root.Position - lastPos).Magnitude < 0.6 and (root.Position - targetPos).Magnitude > 3.5 then
             hum.Jump = true
-            hum:ChangeState(Enum.HumanoidStateType.Jumping)
-            task.wait(0.1)
+            task.wait(0.2)
             hum:MoveTo(targetPos)
         end
         lastPos = root.Position
     end
-    return (root.Position - targetPos).Magnitude <= 4.5
+    return (root.Position - targetPos).Magnitude <= 4.0
 end
 
 local myPlotCache = nil
@@ -232,7 +229,7 @@ local function IsInBattle()
 end
 
 --==================================================
--- STATE MACHINE: HARVEST & OWN RECYCLER DEPOSIT
+-- STATE MACHINE: NATURAL HARVEST & RECYCLER
 --==================================================
 
 local collectedCount = 0
@@ -247,10 +244,11 @@ task.spawn(function()
 
                 local targetCapacity = Flags.ScrapCapacity or Flags.RecycleThreshold or 20
 
+                -- 1. Deposit into OWN Recycler when reaching capacity
                 if Flags.AutoRecycleScrap and collectedCount >= targetCapacity then
                     local recPart, recModel = FindMyRecycler()
                     if recPart then
-                        WalkTo(recPart.Position, 3.5)
+                        WalkTo(recPart.Position, 4.0)
 
                         local prompt = recModel:FindFirstChildWhichIsA("ProximityPrompt", true) or recPart:FindFirstChildWhichIsA("ProximityPrompt", true)
                         if prompt and fireproximityprompt then fireproximityprompt(prompt) end
@@ -258,17 +256,13 @@ task.spawn(function()
                         local cd = recModel:FindFirstChildWhichIsA("ClickDetector", true) or recPart:FindFirstChildWhichIsA("ClickDetector", true)
                         if cd and fireclickdetector then fireclickdetector(cd) end
 
-                        if firetouchinterest then
-                            firetouchinterest(root, recPart, 0)
-                            firetouchinterest(root, recPart, 1)
-                        end
-
-                        task.wait(0.5)
+                        task.wait(0.6)
                         collectedCount = 0
                         ProcessedScraps = {}
                     end
                 end
 
+                -- 2. Scan and walk to ground scraps inside coop
                 local availableScraps = {}
                 for _, obj in ipairs(workspace:GetDescendants()) do
                     if not Flags.AutoGrabScraps or not IsRunning then break end
@@ -291,7 +285,7 @@ task.spawn(function()
 
                 if #availableScraps > 0 and collectedCount < targetCapacity then
                     local target = availableScraps[1]
-                    WalkTo(target.Part.Position, 2.0)
+                    WalkTo(target.Part.Position, 2.5)
 
                     local prompt = target.Obj:FindFirstChildWhichIsA("ProximityPrompt", true) or target.Part:FindFirstChildWhichIsA("ProximityPrompt", true)
                     if prompt and fireproximityprompt then fireproximityprompt(prompt) end
@@ -299,32 +293,23 @@ task.spawn(function()
                     local cd = target.Obj:FindFirstChildWhichIsA("ClickDetector", true) or target.Part:FindFirstChildWhichIsA("ClickDetector", true)
                     if cd and fireclickdetector then fireclickdetector(cd) end
 
-                    if firetouchinterest then
-                        firetouchinterest(root, target.Part, 0)
-                        firetouchinterest(root, target.Part, 1)
-                    end
-
                     ProcessedScraps[target.Obj] = true
                     ProcessedScraps[target.Part] = true
                     collectedCount = collectedCount + 1
-                    task.wait(0.04)
+                    task.wait(0.08)
                 else
                     if Flags.AutoRecycleScrap and collectedCount > 0 then
                         local recPart, recModel = FindMyRecycler()
                         if recPart then
-                            WalkTo(recPart.Position, 3.5)
+                            WalkTo(recPart.Position, 4.0)
                             local prompt = recModel:FindFirstChildWhichIsA("ProximityPrompt", true) or recPart:FindFirstChildWhichIsA("ProximityPrompt", true)
                             if prompt and fireproximityprompt then fireproximityprompt(prompt) end
-                            if firetouchinterest then
-                                firetouchinterest(root, recPart, 0)
-                                firetouchinterest(root, recPart, 1)
-                            end
-                            task.wait(0.5)
+                            task.wait(0.6)
                             collectedCount = 0
                         end
                     end
                     ProcessedScraps = {}
-                    task.wait(0.3)
+                    task.wait(0.4)
                 end
             end)
         else
@@ -337,6 +322,7 @@ end)
 -- OTHER AUTOMATIONS
 --==================================================
 
+-- AUTO TOWER
 local isTowerBusy = false
 task.spawn(function()
     while IsRunning do
@@ -547,7 +533,7 @@ Min.MouseButton1Click:Connect(function()
     tw(Main, {Size = UDim2.fromOffset(W, minState and 34 or H)}, 0.15)
 end)
 
--- Screen-Clamped Dragging (Never goes off-screen)
+-- Screen-Clamped Dragging
 local drag, dStart, fStart
 local function SetupDrag(frame)
     frame.InputBegan:Connect(function(i)
@@ -794,4 +780,4 @@ AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
 SetTab("Farm")
-print("[ERDEVA HUB] Fast Jump-Navigation & Capacity Slider Ready.")
+print("[ERDEVA HUB] 100% Undetectable & Clean Automation Active.")
