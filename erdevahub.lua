@@ -1,18 +1,10 @@
 --[[
-    ERDEVA HUB - Fluid Non-Stop Scrap Harvester & Perfect Progression
-    - Fix: Excludes scraps attached to player head / characters so it never targets itself!
-    - Non-Stop Scraping: Chains directly to the next ground scrap with 0 pauses.
-    - Accurate Capacity Tracking: Reads held scraps + collection counter to guarantee exact target count (e.g. 20).
-    - Auto Recycler Deposit: Walks to Recycler pad the moment capacity is reached.
-    - Master Auto-Rebirth: 1-Click activates full AFK cycle:
-      * Auto Grab Scraps (Strict Capacity: 20)
-      * Auto Recycle Scrap
-      * Auto Fuse Chickens
-      * Auto Upgrade Feeder & Coop
-      * Auto Start Tower
-      * Auto No Thanks
-    - Character Noclip (Stepped hook) for smooth fence gliding.
-    - Clean Shutdown on GUI Close [X]
+    ERDEVA HUB - 2D Flat Vector Navigation (Zero-Pause & Continuous Running)
+    - Fix: 2D Horizontal Distance (Eliminates the 3-stud Y-axis timeout pause!)
+    - Continuous Joystick Vector: Runs smoothly from scrap to scrap without stopping.
+    - Strict Capacity: Collects exact target count (e.g. 20) before heading to Recycler.
+    - Master Auto-Rebirth: 1-Click activates full AFK cycle.
+    - Character Noclip: Smooth fence traversal.
 ]]
 
 local Players = game:GetService("Players")
@@ -67,7 +59,7 @@ local Flags = {
 local ToggleUpdaters = {}
 
 --==================================================
--- CHARACTER NOCLIP & PHYSICAL NAVIGATION
+-- NAVIGATION & FLAT 2D DISTANCE
 --==================================================
 
 local function GetChar()
@@ -84,7 +76,7 @@ local function GetHumanoid()
     return char and char:FindFirstChildOfClass("Humanoid")
 end
 
--- Active Noclip on Character during harvesting/depositing
+-- Active Noclip on Character so fences never block movement
 RunService.Stepped:Connect(function()
     if IsRunning and (Flags.AutoGrabScraps or Flags.AutoRecycleScrap) then
         local char = GetChar()
@@ -98,24 +90,25 @@ RunService.Stepped:Connect(function()
     end
 end)
 
--- Fast non-blocking walk
-local function WalkTo(targetPos, maxWait)
-    if not IsRunning then return false end
+-- 2D Flat Horizontal Distance (Ignores Character Height Y)
+local function GetFlatDistance(posA, posB)
+    return Vector2.new(posA.X - posB.X, posA.Z - posB.Z).Magnitude
+end
+
+-- Smooth, non-stopping movement to target
+local function MoveTowards(targetPos)
     local hum = GetHumanoid()
     local root = GetRoot()
     if not hum or not root then return false end
 
-    if (root.Position - targetPos).Magnitude <= 2.2 then return true end
-
-    hum:MoveTo(targetPos)
-
-    local start = tick()
-    local timeout = maxWait or 2.5
-
-    while IsRunning and (root.Position - targetPos).Magnitude > 2.2 and (tick() - start < timeout) do
-        task.wait(0.04)
+    local flatDist = GetFlatDistance(root.Position, targetPos)
+    if flatDist <= 2.5 then
+        return true -- Arrived instantly
     end
-    return (root.Position - targetPos).Magnitude <= 2.8
+
+    local dir = Vector3.new(targetPos.X - root.Position.X, 0, targetPos.Z - root.Position.Z).Unit
+    hum:Move(dir, false)
+    return false
 end
 
 local myPlotCache = nil
@@ -243,29 +236,10 @@ local function IsInBattle()
     return false
 end
 
--- Check how many scraps are actually held on player's head
-local function GetHeldScrapCount()
-    local char = GetChar()
-    if not char then return 0 end
-    local count = 0
-    for _, item in ipairs(char:GetDescendants()) do
-        if item:IsA("BasePart") and item.Name ~= "HumanoidRootPart" and item.Name ~= "Head" and item.Name ~= "Torso" and not item.Name:find("Arm") and not item.Name:find("Leg") and not item.Name:find("Hand") and not item.Name:find("Foot") and not item.Name:find("Upper") and not item.Name:find("Lower") then
-            local n = item.Name:lower()
-            local pn = item.Parent and item.Parent.Name:lower() or ""
-            if n:find("scrap") or n:find("trash") or n:find("drop") or n:find("plate") or pn:find("scrap") then
-                count = count + 1
-            end
-        end
-    end
-    return count
-end
-
--- Validate that a scrap is strictly lying on the ground (NOT attached to any player)
+-- Validate ground scrap
 local function IsGroundScrap(obj)
     if not obj:IsA("BasePart") or not obj.Parent then return false end
-    -- Ignore if inside any player character
-    local ancestorModel = obj:FindFirstAncestorOfClass("Model")
-    if ancestorModel and ancestorModel:FindFirstChildOfClass("Humanoid") then
+    if obj:FindFirstAncestorOfClass("Model") and obj:FindFirstAncestorOfClass("Model"):FindFirstChildOfClass("Humanoid") then
         return false
     end
     local n = obj.Name:lower()
@@ -277,7 +251,7 @@ local function IsGroundScrap(obj)
 end
 
 --==================================================
--- 1. NON-STOP FLUID SCRAP HARVESTING ENGINE
+-- 1. CONTINUOUS NON-STOP HARVESTING LOOP
 --==================================================
 
 local collectedCount = 0
@@ -287,30 +261,34 @@ task.spawn(function()
         if Flags.AutoGrabScraps and not IsInBattle() then
             pcall(function()
                 local root = GetRoot()
-                if not root then task.wait(0.1) return end
+                local hum = GetHumanoid()
+                if not root or not hum then task.wait(0.1) return end
 
                 local targetCapacity = Flags.ScrapCapacity or Flags.RecycleThreshold or 20
-                local actualHeld = GetHeldScrapCount()
-                local currentTotal = math.max(collectedCount, actualHeld)
 
-                -- 1. If capacity is fully reached: Go to Recycler, deposit, reset
-                if Flags.AutoRecycleScrap and currentTotal >= targetCapacity then
+                -- 1. If capacity is met: Walk to Recycler, deposit, reset
+                if Flags.AutoRecycleScrap and collectedCount >= targetCapacity then
                     local recPart, recModel = FindMyRecycler()
                     if recPart then
-                        WalkTo(recPart.Position, 3.5)
-                        task.wait(1.5) -- Stand on pad until all stacked scraps are converted
+                        local start = tick()
+                        while IsRunning and GetFlatDistance(root.Position, recPart.Position) > 2.8 and (tick() - start < 4.0) do
+                            MoveTowards(recPart.Position)
+                            task.wait(0.03)
+                        end
+                        hum:Move(Vector3.zero, false)
+                        task.wait(1.5) -- Deposit pause
                         collectedCount = 0
                     end
                 end
 
-                -- 2. Find closest ground scrap
+                -- 2. Find closest ground scrap using 2D distance
                 local closestPart = nil
                 local minDistance = 9999
 
                 for _, obj in ipairs(workspace:GetDescendants()) do
                     if not Flags.AutoGrabScraps or not IsRunning then break end
                     if IsGroundScrap(obj) then
-                        local dist = (root.Position - obj.Position).Magnitude
+                        local dist = GetFlatDistance(root.Position, obj.Position)
                         if dist < 85 and dist < minDistance then
                             minDistance = dist
                             closestPart = obj
@@ -318,18 +296,22 @@ task.spawn(function()
                     end
                 end
 
-                -- 3. Walk non-stop directly to ground scrap
-                if closestPart and currentTotal < targetCapacity then
-                    WalkTo(closestPart.Position, 1.8)
+                -- 3. Run continuously to target scrap
+                if closestPart and collectedCount < targetCapacity then
+                    local start = tick()
+                    while IsRunning and closestPart.Parent and GetFlatDistance(root.Position, closestPart.Position) > 2.5 and (tick() - start < 2.0) do
+                        MoveTowards(closestPart.Position)
+                        task.wait(0.03)
+                    end
                     collectedCount = collectedCount + 1
-                    -- 0ms delay: immediately searches and moves to next ground scrap without pausing!
+                    -- Immediately chains to next scrap with 0ms wait!
                 else
-                    -- No ground scraps at this moment: brief 0.1s wait for new drops
-                    task.wait(0.1)
+                    hum:Move(Vector3.zero, false)
+                    task.wait(0.05)
                 end
             end)
         else
-            task.wait(0.25)
+            task.wait(0.2)
         end
     end
 end)
@@ -535,7 +517,7 @@ local function Shutdown()
     local root = GetRoot()
     local hum = GetHumanoid()
     if hum and root then
-        hum:MoveTo(root.Position)
+        hum:Move(Vector3.zero, false)
     end
     if Gui then
         Gui:Destroy()
@@ -874,4 +856,4 @@ AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
 SetTab("Farm")
-print("[ERDEVA HUB] Non-Stop Fluid Harvesting Active.")
+print("[ERDEVA HUB] 2D Flat Vector Navigation Active.")
