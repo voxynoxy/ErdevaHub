@@ -1,9 +1,16 @@
-local P = game:GetService("Players").LocalPlayer
-local UIS = game:GetService("UserInputService")
-local CG = game:GetService("CoreGui")
-local TS = game:GetService("TweenService")
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-pcall(function() if CG:FindFirstChild("ERDEVA_HUB") then CG.ERDEVA_HUB:Destroy() end end)
+local player = Players.LocalPlayer
+
+pcall(function()
+    if CoreGui:FindFirstChild("ERDEVA_HUB") then
+        CoreGui:FindFirstChild("ERDEVA_HUB"):Destroy()
+    end
+end)
 
 local W, H = 420, 250
 local C = {
@@ -16,9 +23,172 @@ local C = {
     Brd = Color3.fromRGB(45, 45, 45)
 }
 
-local function tw(o, p, t) TS:Create(o, TweenInfo.new(t or 0.15), p):Play() end
+local function tw(o, p, t)
+    TweenService:Create(o, TweenInfo.new(t or 0.15), p):Play()
+end
 
-local Gui = Instance.new("ScreenGui", CG)
+--==================================================
+-- AUTOMATION ENGINE
+--==================================================
+local Flags = {
+    AutoOpenEggs = false,
+    AutoFuseChickens = false,
+    AutoGrabScraps = false,
+    AutoRecycleScrap = false,
+    AutoUpgradeRecycler = false,
+    RecycleThreshold = 10,
+    AutoRebirth = false,
+    AutoUpgradeCoop = false,
+    AutoUpgradeFeeder = false,
+    AutoBuyFeeders = false,
+    AutoStartTower = false,
+    AutoNoThanks = false,
+    AutoStartChaos = false
+}
+
+-- Remote Search & Execute
+local function FireRemote(names, ...)
+    local args = {...}
+    for _, name in ipairs(names) do
+        local lowerName = name:lower()
+        for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+            if obj:IsA("RemoteEvent") and obj.Name:lower():find(lowerName) then
+                pcall(function() obj:FireServer(unpack(args)) end)
+                return true
+            elseif obj:IsA("RemoteFunction") and obj.Name:lower():find(lowerName) then
+                pcall(function() obj:InvokeServer(unpack(args)) end)
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Auto Grab Scraps
+task.spawn(function()
+    while true do
+        if Flags.AutoGrabScraps then
+            pcall(function()
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if not Flags.AutoGrabScraps then break end
+                    if obj:IsA("BasePart") and (obj.Name:lower():find("scrap") or (obj.Parent and obj.Parent.Name:lower():find("scrap"))) then
+                        local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt") or (obj.Parent and obj.Parent:FindFirstChildWhichIsA("ProximityPrompt"))
+                        if prompt and fireproximityprompt then
+                            fireproximityprompt(prompt)
+                        elseif player.Character and player.Character:FindFirstChild("HumanoidRootPart") and firetouchinterest then
+                            firetouchinterest(player.Character.HumanoidRootPart, obj, 0)
+                            task.wait(0.05)
+                            firetouchinterest(player.Character.HumanoidRootPart, obj, 1)
+                        end
+                    end
+                end
+                FireRemote({"grabscrap", "collectscrap", "pickupscrap", "scrap"})
+            end)
+        end
+        task.wait(0.3)
+    end
+end)
+
+-- Auto Open Eggs
+task.spawn(function()
+    while true do
+        if Flags.AutoOpenEggs then
+            pcall(function()
+                FireRemote({"openegg", "hatchegg", "buyegg", "egg", "hatch"})
+            end)
+        end
+        task.wait(0.6)
+    end
+end)
+
+-- Auto Fuse Chickens
+task.spawn(function()
+    while true do
+        if Flags.AutoFuseChickens then
+            pcall(function()
+                FireRemote({"fusechickens", "fuseall", "fuse", "mergechickens", "merge", "autofuse"})
+            end)
+        end
+        task.wait(1)
+    end
+end)
+
+-- Auto Recycle Scrap
+task.spawn(function()
+    while true do
+        if Flags.AutoRecycleScrap then
+            pcall(function()
+                FireRemote({"recyclescrap", "recycle", "depositscrap", "recycler"}, Flags.RecycleThreshold)
+            end)
+        end
+        task.wait(1)
+    end
+end)
+
+-- Auto Upgrade Recycler
+task.spawn(function()
+    while true do
+        if Flags.AutoUpgradeRecycler then
+            pcall(function()
+                FireRemote({"upgraderecycler", "upgrademachine", "buyrecyclerupgrade", "recyclerupgrade"})
+            end)
+        end
+        task.wait(1.5)
+    end
+end)
+
+-- Plot Upgrades
+task.spawn(function()
+    while true do
+        if Flags.AutoRebirth then
+            pcall(function() FireRemote({"rebirth", "playerrebirth", "dorebirth"}) end)
+        end
+        if Flags.AutoUpgradeCoop then
+            pcall(function() FireRemote({"upgradecoop", "buycoopupgrade", "coopupgrade", "upgradeplot"}) end)
+        end
+        if Flags.AutoUpgradeFeeder then
+            pcall(function() FireRemote({"upgradefeeder", "upgradefeeders", "feederupgrade"}) end)
+        end
+        if Flags.AutoBuyFeeders then
+            pcall(function() FireRemote({"buyfeeder", "buyfeeders", "purchasefeeder"}) end)
+        end
+        task.wait(1)
+    end
+end)
+
+-- Battle Handlers
+task.spawn(function()
+    while true do
+        if Flags.AutoStartTower then
+            pcall(function() FireRemote({"starttower", "towerstart", "entertower", "jointower"}) end)
+        end
+        if Flags.AutoStartChaos then
+            pcall(function() FireRemote({"startchaos", "chaosstart", "enterchaos", "joinchaos"}) end)
+        end
+        if Flags.AutoNoThanks then
+            pcall(function()
+                FireRemote({"nothanks", "claimnothanks", "skipreward", "declinereward"})
+                local pGui = player:FindFirstChild("PlayerGui")
+                if pGui then
+                    for _, b in ipairs(pGui:GetDescendants()) do
+                        if (b:IsA("TextButton") or b:IsA("ImageButton")) and b.Visible then
+                            local text = (b:IsA("TextButton") and b.Text:lower()) or b.Name:lower()
+                            if text:find("no thanks") or text:find("nothanks") or text:find("skip") then
+                                for _, c in ipairs(getconnections(b.MouseButton1Click)) do c:Fire() end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+        task.wait(0.5)
+    end
+end)
+
+--==================================================
+-- UI CREATION
+--==================================================
+local Gui = Instance.new("ScreenGui", CoreGui)
 Gui.Name = "ERDEVA_HUB"
 Gui.ResetOnSpawn = false
 Gui.IgnoreGuiInset = true
@@ -90,7 +260,7 @@ Top.InputBegan:Connect(function(i)
         i.Changed:Connect(function() if i.UserInputState == Enum.UserInputState.End then drag = false end end)
     end
 end)
-UIS.InputChanged:Connect(function(i)
+UserInputService.InputChanged:Connect(function(i)
     if drag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
         local d = i.Position - dStart
         Main.Position = UDim2.new(fStart.X.Scale, fStart.X.Offset + d.X, fStart.Y.Scale, fStart.Y.Offset + d.Y)
@@ -156,7 +326,7 @@ local function MakeTab(name, order)
     return page
 end
 
-local function AddToggle(parent, text, cb)
+local function AddToggle(parent, text, flagKey)
     local f = Instance.new("Frame", parent)
     f.Size = UDim2.new(1, 0, 0, 30)
     f.BackgroundColor3 = C.Card
@@ -185,16 +355,15 @@ local function AddToggle(parent, text, cb)
     k.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
     Instance.new("UICorner", k).CornerRadius = UDim.new(1, 0)
 
-    local on = false
     b.MouseButton1Click:Connect(function()
-        on = not on
+        Flags[flagKey] = not Flags[flagKey]
+        local on = Flags[flagKey]
         tw(b, {BackgroundColor3 = (on and C.Red or Color3.fromRGB(50, 50, 50))})
         tw(k, {Position = (on and UDim2.fromOffset(20, 2) or UDim2.fromOffset(2, 2))})
-        if cb then cb(on) end
     end)
 end
 
-local function AddSlider(parent, text, maxV, defV, cb)
+local function AddSlider(parent, text, maxV, defV, flagKey)
     local f = Instance.new("Frame", parent)
     f.Size = UDim2.new(1, 0, 0, 36)
     f.BackgroundColor3 = C.Card
@@ -236,16 +405,16 @@ local function AddSlider(parent, text, maxV, defV, cb)
     bar.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then sld = true end
     end)
-    UIS.InputEnded:Connect(function(i)
+    UserInputService.InputEnded:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then sld = false end
     end)
-    UIS.InputChanged:Connect(function(i)
+    UserInputService.InputChanged:Connect(function(i)
         if sld and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
             local r = math.clamp((i.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
             fill.Size = UDim2.new(r, 0, 1, 0)
             local val = math.floor(r * maxV + 0.5)
             vl.Text = tostring(val) .. "/" .. tostring(maxV)
-            if cb then cb(val) end
+            Flags[flagKey] = val
         end
     end)
 end
@@ -257,23 +426,23 @@ local BattlePage = MakeTab("Battle", 3)
 local InfoPage = MakeTab("Info", 4)
 
 -- 1. Farm
-AddToggle(FarmPage, "Auto Open Eggs", function(v) end)
-AddToggle(FarmPage, "Auto Fuse Chickens", function(v) end)
-AddToggle(FarmPage, "Auto Grab Scraps", function(v) end)
-AddToggle(FarmPage, "Auto Recycle Scrap", function(v) end)
-AddToggle(FarmPage, "Auto Upgrade Recycler", function(v) end)
-AddSlider(FarmPage, "Recycle threshold", 20, 10, function(v) end)
+AddToggle(FarmPage, "Auto Open Eggs", "AutoOpenEggs")
+AddToggle(FarmPage, "Auto Fuse Chickens", "AutoFuseChickens")
+AddToggle(FarmPage, "Auto Grab Scraps", "AutoGrabScraps")
+AddToggle(FarmPage, "Auto Recycle Scrap", "AutoRecycleScrap")
+AddToggle(FarmPage, "Auto Upgrade Recycler", "AutoUpgradeRecycler")
+AddSlider(FarmPage, "Recycle threshold", 20, 10, "RecycleThreshold")
 
 -- 2. Plot
-AddToggle(PlotPage, "Auto Rebirth", function(v) end)
-AddToggle(PlotPage, "Auto Upgrade Coop", function(v) end)
-AddToggle(PlotPage, "Auto Upgrade Feeder", function(v) end)
-AddToggle(PlotPage, "Auto Buy Feeders", function(v) end)
+AddToggle(PlotPage, "Auto Rebirth", "AutoRebirth")
+AddToggle(PlotPage, "Auto Upgrade Coop", "AutoUpgradeCoop")
+AddToggle(PlotPage, "Auto Upgrade Feeder", "AutoUpgradeFeeder")
+AddToggle(PlotPage, "Auto Buy Feeders", "AutoBuyFeeders")
 
 -- 3. Battle
-AddToggle(BattlePage, "Auto Start Tower", function(v) end)
-AddToggle(BattlePage, "Auto No Thanks", function(v) end)
-AddToggle(BattlePage, "Auto Start Chaos", function(v) end)
+AddToggle(BattlePage, "Auto Start Tower", "AutoStartTower")
+AddToggle(BattlePage, "Auto No Thanks", "AutoNoThanks")
+AddToggle(BattlePage, "Auto Start Chaos", "AutoStartChaos")
 
 -- 4. Info
 local function AddInfo(k, v)
@@ -304,8 +473,8 @@ local function AddInfo(k, v)
 end
 AddInfo("Hub", "ERDEVA HUB")
 AddInfo("Game", "Chicken Farm")
-AddInfo("Player", P.DisplayName)
+AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
 SetTab("Farm")
-print("[ERDEVA HUB] Loaded successfully!")
+print("[ERDEVA HUB] All features fully armed and working!")
