@@ -1,7 +1,3 @@
-
--- ERDEVA HUB V6 - GROW A CHICKEN FIGHTER
-
-
 local player = game:GetService("Players").LocalPlayer
 local replicatedStorage = game:GetService("ReplicatedStorage")
 local runService = game:GetService("RunService")
@@ -13,14 +9,36 @@ local isRunning = false
 local isMinimized = false
 local currentTab = "Main"
 local autoCollectEnabled = false
+local autoOpenEnabled = false
 local autoFuseEnabled = false
+local autoSellEnabled = false
 local autoRebirthEnabled = false
+local autoTowerEnabled = false
+local autoScrapEnabled = false
+local autoPitEnabled = false
+local autoFightEnabled = false
+local autoChaosEnabled = false
+local autoUpgradeCoop = false
+local autoUpgradeFeeder = false
+local autoBuyFeeder = false
+local autoUpgradeRecycler = false
+local autoBuyRecycler = false
+local autoSkipFloor = false
 local delayMin = 3
 local delayMax = 8
+local sellRarity = "Common"
+local walkSpeed = 20
+local tweenSpeed = 10
+local minHealth = 50
+local scrapLimit = 10
 
 local function randomDelay(min, max)
     local delay = min + math.random() * (max - min)
     task.wait(delay)
+end
+
+local function randomInt(min, max)
+    return math.random(min, max)
 end
 
 local function findRemote(namePattern)
@@ -32,12 +50,32 @@ local function findRemote(namePattern)
     return nil
 end
 
+local function findLocal(namePattern)
+    for _, child in pairs(player:GetChildren()) do
+        if string.match(child.Name, namePattern) then
+            return child
+        end
+    end
+    return nil
+end
+
 local claimRemote = findRemote("[Cc]laim|[Hh]arvest|[Cc]ollect")
+local sellRemote = findRemote("[Ss]ell")
 local fuseRemote = findRemote("[Ff]use")
 local rebirthRemote = findRemote("[Rr]ebirth")
+local towerRemote = findRemote("[Tt]ower")
+local scrapRemote = findRemote("[Ss]crap")
+local pitRemote = findRemote("[Pp]it")
+local fightRemote = findRemote("[Ff]ight|[Bb]attle")
+local chaosRemote = findRemote("[Cc]haos")
+local upgradeRemote = findRemote("[Uu]pgrade")
+local buyRemote = findRemote("[Bb]uy")
 
 local playerData = player:FindFirstChild("Data") or player:FindFirstChild("leaderstats")
+local eggs = playerData and playerData:FindFirstChild("Eggs")
+local money = playerData and playerData:FindFirstChild("Money")
 local level = playerData and playerData:FindFirstChild("Level")
+local rebirths = playerData and playerData:FindFirstChild("Rebirths")
 
 local function log(message)
     print("[Erdeva] " .. message)
@@ -57,6 +95,17 @@ local function autoCollect()
     end
 end
 
+local function autoOpen()
+    while autoOpenEnabled do
+        pcall(function()
+            if claimRemote then
+                claimRemote:FireServer()
+            end
+        end)
+        randomDelay(2, 5)
+    end
+end
+
 local function autoFuse()
     while autoFuseEnabled do
         pcall(function()
@@ -67,6 +116,20 @@ local function autoFuse()
         randomDelay(5, 15)
         if math.random() < 0.2 then
             randomDelay(10, 20)
+        end
+    end
+end
+
+local function autoSell()
+    while autoSellEnabled do
+        pcall(function()
+            if sellRemote then
+                sellRemote:FireServer()
+            end
+        end)
+        randomDelay(3, 8)
+        if math.random() < 0.15 then
+            randomDelay(5, 10)
         end
     end
 end
@@ -85,103 +148,243 @@ local function autoRebirth()
     end
 end
 
+local function autoTower()
+    while autoTowerEnabled do
+        pcall(function()
+            if towerRemote then
+                towerRemote:FireServer()
+            end
+        end)
+        randomDelay(1, 3)
+        if math.random() < 0.3 then
+            randomDelay(5, 10)
+        end
+    end
+end
+
+local function autoScrap()
+    while autoScrapEnabled do
+        pcall(function()
+            if scrapRemote then
+                scrapRemote:FireServer()
+            end
+        end)
+        randomDelay(2, 6)
+    end
+end
+
+local function autoPit()
+    while autoPitEnabled do
+        pcall(function()
+            if pitRemote then
+                pitRemote:FireServer()
+            end
+        end)
+        randomDelay(3, 7)
+    end
+end
+
+local function autoFight()
+    while autoFightEnabled do
+        pcall(function()
+            if fightRemote then
+                fightRemote:FireServer()
+            end
+        end)
+        randomDelay(2, 5)
+        if math.random() < 0.2 then
+            randomDelay(8, 15)
+        end
+    end
+end
+
+local function autoChaos()
+    while autoChaosEnabled do
+        pcall(function()
+            if chaosRemote then
+                chaosRemote:FireServer()
+            end
+        end)
+        randomDelay(4, 10)
+    end
+end
+
+local function autoUpgradeCoop()
+    while autoUpgradeCoop do
+        pcall(function()
+            if upgradeRemote then
+                upgradeRemote:FireServer("Coop")
+            end
+        end)
+        randomDelay(5, 12)
+    end
+end
+
+local function autoUpgradeFeeder()
+    while autoUpgradeFeeder do
+        pcall(function()
+            if upgradeRemote then
+                upgradeRemote:FireServer("Feeder")
+            end
+        end)
+        randomDelay(5, 12)
+    end
+end
+
+local function autoBuyFeeder()
+    while autoBuyFeeder do
+        pcall(function()
+            if buyRemote then
+                buyRemote:FireServer("Feeder")
+            end
+        end)
+        randomDelay(3, 8)
+    end
+end
+
+local function autoUpgradeRecycler()
+    while autoUpgradeRecycler do
+        pcall(function()
+            if upgradeRemote then
+                upgradeRemote:FireServer("Recycler")
+            end
+        end)
+        randomDelay(5, 12)
+    end
+end
+
+local function autoBuyRecycler()
+    while autoBuyRecycler do
+        pcall(function()
+            if buyRemote then
+                buyRemote:FireServer("Recycler")
+            end
+        end)
+        randomDelay(3, 8)
+    end
+end
+
 local function startAll()
     isRunning = true
     log("Started all features")
     if autoCollectEnabled then task.spawn(autoCollect) end
+    if autoOpenEnabled then task.spawn(autoOpen) end
     if autoFuseEnabled then task.spawn(autoFuse) end
+    if autoSellEnabled then task.spawn(autoSell) end
     if autoRebirthEnabled then task.spawn(autoRebirth) end
+    if autoTowerEnabled then task.spawn(autoTower) end
+    if autoScrapEnabled then task.spawn(autoScrap) end
+    if autoPitEnabled then task.spawn(autoPit) end
+    if autoFightEnabled then task.spawn(autoFight) end
+    if autoChaosEnabled then task.spawn(autoChaos) end
+    if autoUpgradeCoop then task.spawn(autoUpgradeCoop) end
+    if autoUpgradeFeeder then task.spawn(autoUpgradeFeeder) end
+    if autoBuyFeeder then task.spawn(autoBuyFeeder) end
+    if autoUpgradeRecycler then task.spawn(autoUpgradeRecycler) end
+    if autoBuyRecycler then task.spawn(autoBuyRecycler) end
 end
 
 local function stopAll()
     isRunning = false
     autoCollectEnabled = false
+    autoOpenEnabled = false
     autoFuseEnabled = false
+    autoSellEnabled = false
     autoRebirthEnabled = false
+    autoTowerEnabled = false
+    autoScrapEnabled = false
+    autoPitEnabled = false
+    autoFightEnabled = false
+    autoChaosEnabled = false
+    autoUpgradeCoop = false
+    autoUpgradeFeeder = false
+    autoBuyFeeder = false
+    autoUpgradeRecycler = false
+    autoBuyRecycler = false
     log("Stopped all features")
 end
 
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "ErdevaHubV6"
+screenGui.Name = "ErdevaHubV7"
 screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = coreGui
 
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 320, 0, 380)
-mainFrame.Position = UDim2.new(0.5, -160, 0.5, -190)
-mainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 20)
+mainFrame.Size = UDim2.new(0, 380, 0, 480)
+mainFrame.Position = UDim2.new(0.5, -190, 0.5, -240)
+mainFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 28)
 mainFrame.BackgroundTransparency = 0.05
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
 mainFrame.Parent = screenGui
 
 local mainCorner = Instance.new("UICorner")
-mainCorner.CornerRadius = UDim.new(0, 12)
+mainCorner.CornerRadius = UDim.new(0, 14)
 mainCorner.Parent = mainFrame
 
 local mainStroke = Instance.new("UIStroke")
 mainStroke.Thickness = 1.5
-mainStroke.Color = Color3.fromRGB(0, 255, 0)
-mainStroke.Transparency = 0.5
+mainStroke.Color = Color3.fromRGB(0, 200, 255)
+mainStroke.Transparency = 0.3
 mainStroke.Parent = mainFrame
 
 local header = Instance.new("Frame")
-header.Size = UDim2.new(1, 0, 0, 45)
-header.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-header.BackgroundTransparency = 0.1
+header.Size = UDim2.new(1, 0, 0, 50)
+header.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
+header.BackgroundTransparency = 0.15
 header.Parent = mainFrame
 
 local headerCorner = Instance.new("UICorner")
-headerCorner.CornerRadius = UDim.new(0, 12)
+headerCorner.CornerRadius = UDim.new(0, 14)
 headerCorner.Parent = header
 
 local logo = Instance.new("TextLabel")
-logo.Size = UDim2.new(0, 30, 1, 0)
-logo.Position = UDim2.new(0, 5, 0, 0)
+logo.Size = UDim2.new(0, 35, 1, 0)
+logo.Position = UDim2.new(0, 8, 0, 0)
 logo.BackgroundTransparency = 1
 logo.Text = "⚡"
-logo.TextColor3 = Color3.fromRGB(0, 255, 0)
-logo.TextSize = 22
+logo.TextColor3 = Color3.fromRGB(0, 200, 255)
+logo.TextSize = 24
 logo.Font = Enum.Font.GothamBold
 logo.Parent = header
 
 local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -80, 1, 0)
-title.Position = UDim2.new(0, 40, 0, 0)
+title.Size = UDim2.new(1, -120, 1, 0)
+title.Position = UDim2.new(0, 48, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "ERDEVA HUB"
-title.TextColor3 = Color3.fromRGB(0, 255, 0)
-title.TextSize = 16
+title.Text = "ERDEVA HUB V7"
+title.TextColor3 = Color3.fromRGB(0, 200, 255)
+title.TextSize = 18
 title.Font = Enum.Font.GothamBold
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.Parent = header
 
 local minimizeBtn = Instance.new("TextButton")
-minimizeBtn.Size = UDim2.new(0, 25, 1, 0)
-minimizeBtn.Position = UDim2.new(1, -55, 0, 0)
+minimizeBtn.Size = UDim2.new(0, 30, 1, 0)
+minimizeBtn.Position = UDim2.new(1, -65, 0, 0)
 minimizeBtn.BackgroundTransparency = 1
 minimizeBtn.Text = "−"
-minimizeBtn.TextColor3 = Color3.fromRGB(0, 255, 0)
-minimizeBtn.TextSize = 20
+minimizeBtn.TextColor3 = Color3.fromRGB(0, 200, 255)
+minimizeBtn.TextSize = 22
 minimizeBtn.Font = Enum.Font.GothamBold
 minimizeBtn.Parent = header
 minimizeBtn.MouseButton1Click:Connect(function()
     isMinimized = not isMinimized
     if isMinimized then
-        mainFrame:TweenSize(UDim2.new(0, 320, 0, 45), Enum.EasingDirection.InOut, Enum.EasingStyle.Quad, 0.2, true)
+        mainFrame:TweenSize(UDim2.new(0, 380, 0, 50), Enum.EasingDirection.InOut, Enum.EasingStyle.Quad, 0.25, true)
     else
-        mainFrame:TweenSize(UDim2.new(0, 320, 0, 380), Enum.EasingDirection.InOut, Enum.EasingStyle.Quad, 0.2, true)
+        mainFrame:TweenSize(UDim2.new(0, 380, 0, 480), Enum.EasingDirection.InOut, Enum.EasingStyle.Quad, 0.25, true)
     end
 end)
 
 local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0, 25, 1, 0)
-closeBtn.Position = UDim2.new(1, -28, 0, 0)
+closeBtn.Size = UDim2.new(0, 30, 1, 0)
+closeBtn.Position = UDim2.new(1, -32, 0, 0)
 closeBtn.BackgroundTransparency = 1
 closeBtn.Text = "✕"
-closeBtn.TextColor3 = Color3.fromRGB(255, 0, 0)
-closeBtn.TextSize = 16
+closeBtn.TextColor3 = Color3.fromRGB(255, 80, 80)
+closeBtn.TextSize = 18
 closeBtn.Font = Enum.Font.GothamBold
 closeBtn.Parent = header
 closeBtn.MouseButton1Click:Connect(function()
@@ -189,23 +392,23 @@ closeBtn.MouseButton1Click:Connect(function()
     screenGui:Destroy()
 end)
 
-local tabs = {"Main", "Farm"}
+local tabs = {"Main", "Farm", "Upgrade", "Fight"}
 local tabButtons = {}
 
 local tabFrame = Instance.new("Frame")
-tabFrame.Size = UDim2.new(1, -20, 0, 35)
-tabFrame.Position = UDim2.new(0, 10, 0, 50)
+tabFrame.Size = UDim2.new(1, -20, 0, 38)
+tabFrame.Position = UDim2.new(0, 10, 0, 55)
 tabFrame.BackgroundTransparency = 1
 tabFrame.Parent = mainFrame
 
 for i, tab in pairs(tabs) do
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.5 - 0.01, 0, 1, -4)
-    btn.Position = UDim2.new((i-1) * 0.5 + 0.005, 0, 0, 2)
-    btn.BackgroundColor3 = Color3.fromRGB(20, 20, 40)
+    btn.Size = UDim2.new(0.25 - 0.01, 0, 1, -4)
+    btn.Position = UDim2.new((i-1) * 0.25 + 0.005, 0, 0, 2)
+    btn.BackgroundColor3 = Color3.fromRGB(20, 20, 45)
     btn.TextColor3 = Color3.fromRGB(150, 150, 200)
     btn.Text = tab
-    btn.TextSize = 12
+    btn.TextSize = 11
     btn.Font = Enum.Font.GothamBold
     btn.Parent = tabFrame
     
@@ -218,23 +421,23 @@ for i, tab in pairs(tabs) do
     btn.MouseButton1Click:Connect(function()
         currentTab = tab
         for _, b in pairs(tabButtons) do
-            b.BackgroundColor3 = Color3.fromRGB(20, 20, 40)
+            b.BackgroundColor3 = Color3.fromRGB(20, 20, 45)
             b.TextColor3 = Color3.fromRGB(150, 150, 200)
         end
-        btn.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-        btn.TextColor3 = Color3.fromRGB(10, 10, 20)
+        btn.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
+        btn.TextColor3 = Color3.fromRGB(12, 12, 28)
         updateContent(tab)
     end)
 end
 
 local contentFrame = Instance.new("ScrollingFrame")
-contentFrame.Size = UDim2.new(1, -20, 1, -110)
-contentFrame.Position = UDim2.new(0, 10, 0, 90)
+contentFrame.Size = UDim2.new(1, -20, 1, -115)
+contentFrame.Position = UDim2.new(0, 10, 0, 98)
 contentFrame.BackgroundTransparency = 1
 contentFrame.BorderSizePixel = 0
-contentFrame.CanvasSize = UDim2.new(0, 0, 0, 400)
+contentFrame.CanvasSize = UDim2.new(0, 0, 0, 500)
 contentFrame.ScrollBarThickness = 3
-contentFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 255, 0)
+contentFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 200, 255)
 contentFrame.Parent = mainFrame
 
 local canvas = Instance.new("Frame")
@@ -246,7 +449,7 @@ local function createToggle(parent, text, y, default)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(1, -10, 0, 35)
     frame.Position = UDim2.new(0, 5, 0, y)
-    frame.BackgroundColor3 = Color3.fromRGB(15, 15, 30)
+    frame.BackgroundColor3 = Color3.fromRGB(16, 16, 35)
     frame.BackgroundTransparency = 0.5
     frame.Parent = parent
     
@@ -268,9 +471,9 @@ local function createToggle(parent, text, y, default)
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Size = UDim2.new(0, 50, 0, 22)
     toggleBtn.Position = UDim2.new(0.78, 0, 0.5, -11)
-    toggleBtn.BackgroundColor3 = default and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(60, 60, 80)
+    toggleBtn.BackgroundColor3 = default and Color3.fromRGB(0, 200, 255) or Color3.fromRGB(60, 60, 80)
     toggleBtn.Text = default and "ON" or "OFF"
-    toggleBtn.TextColor3 = default and Color3.fromRGB(10, 10, 20) or Color3.fromRGB(200, 200, 200)
+    toggleBtn.TextColor3 = default and Color3.fromRGB(12, 12, 28) or Color3.fromRGB(200, 200, 200)
     toggleBtn.TextSize = 10
     toggleBtn.Font = Enum.Font.GothamBold
     toggleBtn.Parent = frame
@@ -284,9 +487,9 @@ local function createToggle(parent, text, y, default)
     
     toggleBtn.MouseButton1Click:Connect(function()
         state = not state
-        toggleBtn.BackgroundColor3 = state and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(60, 60, 80)
+        toggleBtn.BackgroundColor3 = state and Color3.fromRGB(0, 200, 255) or Color3.fromRGB(60, 60, 80)
         toggleBtn.Text = state and "ON" or "OFF"
-        toggleBtn.TextColor3 = state and Color3.fromRGB(10, 10, 20) or Color3.fromRGB(200, 200, 200)
+        toggleBtn.TextColor3 = state and Color3.fromRGB(12, 12, 28) or Color3.fromRGB(200, 200, 200)
         if callback then
             callback(state)
         end
@@ -301,7 +504,7 @@ local function createSlider(parent, text, y, min, max, default)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(1, -10, 0, 40)
     frame.Position = UDim2.new(0, 5, 0, y)
-    frame.BackgroundColor3 = Color3.fromRGB(15, 15, 30)
+    frame.BackgroundColor3 = Color3.fromRGB(16, 16, 35)
     frame.BackgroundTransparency = 0.5
     frame.Parent = parent
     
@@ -325,7 +528,7 @@ local function createSlider(parent, text, y, min, max, default)
     valueLabel.Position = UDim2.new(0.78, 0, 0, 0)
     valueLabel.BackgroundTransparency = 1
     valueLabel.Text = tostring(default)
-    valueLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+    valueLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
     valueLabel.TextSize = 11
     valueLabel.Font = Enum.Font.GothamBold
     valueLabel.TextXAlignment = Enum.TextXAlignment.Right
@@ -343,7 +546,7 @@ local function createSlider(parent, text, y, min, max, default)
     
     local fill = Instance.new("Frame")
     fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
-    fill.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+    fill.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
     fill.Parent = sliderFrame
     
     local fillCorner = Instance.new("UICorner")
@@ -353,7 +556,7 @@ local function createSlider(parent, text, y, min, max, default)
     local thumb = Instance.new("Frame")
     thumb.Size = UDim2.new(0, 12, 0, 12)
     thumb.Position = UDim2.new((default - min) / (max - min), -6, 0, -4.5)
-    thumb.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+    thumb.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
     thumb.Parent = sliderFrame
     
     local thumbCorner = Instance.new("UICorner")
@@ -401,7 +604,7 @@ local function updateContent(tab)
         local statusFrame = Instance.new("Frame")
         statusFrame.Size = UDim2.new(1, -10, 0, 50)
         statusFrame.Position = UDim2.new(0, 5, 0, y)
-        statusFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 30)
+        statusFrame.BackgroundColor3 = Color3.fromRGB(16, 16, 35)
         statusFrame.BackgroundTransparency = 0.5
         statusFrame.Parent = canvas
         
@@ -413,7 +616,7 @@ local function updateContent(tab)
         statusLabel.Size = UDim2.new(1, 0, 1, 0)
         statusLabel.BackgroundTransparency = 1
         statusLabel.Text = "⚡ Status: " .. (isRunning and "ON" or "OFF")
-        statusLabel.TextColor3 = isRunning and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50)
+        statusLabel.TextColor3 = isRunning and Color3.fromRGB(0, 200, 255) or Color3.fromRGB(255, 80, 80)
         statusLabel.TextSize = 14
         statusLabel.Font = Enum.Font.GothamBold
         statusLabel.Parent = statusFrame
@@ -423,9 +626,9 @@ local function updateContent(tab)
         local startBtn = Instance.new("TextButton")
         startBtn.Size = UDim2.new(0.45, -5, 0, 35)
         startBtn.Position = UDim2.new(0.025, 0, 0, y)
-        startBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+        startBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
         startBtn.Text = "▶ START"
-        startBtn.TextColor3 = Color3.fromRGB(10, 10, 20)
+        startBtn.TextColor3 = Color3.fromRGB(12, 12, 28)
         startBtn.TextSize = 13
         startBtn.Font = Enum.Font.GothamBold
         startBtn.Parent = canvas
@@ -443,7 +646,7 @@ local function updateContent(tab)
         local stopBtn = Instance.new("TextButton")
         stopBtn.Size = UDim2.new(0.45, -5, 0, 35)
         stopBtn.Position = UDim2.new(0.525, 0, 0, y)
-        stopBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+        stopBtn.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
         stopBtn.Text = "■ STOP"
         stopBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         stopBtn.TextSize = 13
@@ -473,24 +676,57 @@ local function updateContent(tab)
         autoCollectEnabled, autoCollectCallback = createToggle(canvas, "Auto Collect Eggs", y, autoCollectEnabled)
         y = y + 40
         
+        autoOpenEnabled, autoOpenCallback = createToggle(canvas, "Auto Open Eggs", y, autoOpenEnabled)
+        y = y + 40
+        
         autoFuseEnabled, autoFuseCallback = createToggle(canvas, "Auto Fuse", y, autoFuseEnabled)
         y = y + 40
         
+        autoSellEnabled, autoSellCallback = createToggle(canvas, "Auto Sell", y, autoSellEnabled)
+        y = y + 40
+        
+        autoChaosEnabled, autoChaosCallback = createToggle(canvas, "Auto Chaos", y, autoChaosEnabled)
+        y = y + 40
+        
+        contentFrame.CanvasSize = UDim2.new(0, 0, 0, y + 20)
+        
+    elseif tab == "Upgrade" then
         autoRebirthEnabled, autoRebirthCallback = createToggle(canvas, "Auto Rebirth", y, autoRebirthEnabled)
+        y = y + 40
+        
+        autoTowerEnabled, autoTowerCallback = createToggle(canvas, "Auto Tower", y, autoTowerEnabled)
+        y = y + 40
+        
+        autoSkipFloor, autoSkipFloorCallback = createToggle(canvas, "Skip Floor", y, autoSkipFloor)
+        y = y + 40
+        
+        autoUpgradeCoop, autoUpgradeCoopCallback = createToggle(canvas, "Upgrade Coop", y, autoUpgradeCoop)
+        y = y + 40
+        
+        autoUpgradeFeeder, autoUpgradeFeederCallback = createToggle(canvas, "Upgrade Feeder", y, autoUpgradeFeeder)
+        y = y + 40
+        
+        contentFrame.CanvasSize = UDim2.new(0, 0, 0, y + 20)
+        
+    elseif tab == "Fight" then
+        autoScrapEnabled, autoScrapCallback = createToggle(canvas, "Auto Scrap", y, autoScrapEnabled)
+        y = y + 40
+        
+        autoPitEnabled, autoPitCallback = createToggle(canvas, "Auto Pit", y, autoPitEnabled)
+        y = y + 40
+        
+        autoFightEnabled, autoFightCallback = createToggle(canvas, "Auto Fight", y, autoFightEnabled)
         y = y + 40
         
         contentFrame.CanvasSize = UDim2.new(0, 0, 0, y + 20)
     end
 end
 
-tabButtons["Main"].BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-tabButtons["Main"].TextColor3 = Color3.fromRGB(10, 10, 20)
+tabButtons["Main"].BackgroundColor3 = Color3.fromRGB(0, 200, 255)
+tabButtons["Main"].TextColor3 = Color3.fromRGB(12, 12, 28)
 updateContent("Main")
 
-log("==========================================")
-log("  ERDEVA HUB V6 - GROW A CHICKEN FIGHTER")
-log("  All Features Loaded!")
-log("==========================================")
+log("ERDEVA HUB V7 LOADED")
 starterGui:SetCore("SendNotification", {
     Title = "Erdeva Hub",
     Text = "Script loaded successfully!",
