@@ -1,15 +1,3 @@
---[[
-    ERDEVA HUB - Bulletproof State-Machine Harvester & Auto-Rebirth
-    - State-Machine Isolation:
-      * STATE "FARMING": Strictly locked inside coop. Recycler is completely inaccessible!
-      * STATE "DEPOSITING": ONLY triggered when scrap count is 100% full (e.g. 20).
-      * After depositing, returns immediately to "FARMING" inside own coop.
-    - Ground Smooth Run (Natural velocity, 100% kick-proof)
-    - Knockback Recovery (If hit by chickens, stays locked inside coop)
-    - Master Auto-Rebirth: 1-Click activates full AFK cycle
-    - Clean Shutdown on GUI Close [X]
-]]
-
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -44,26 +32,20 @@ end
 
 local Flags = {
     AutoOpenEggs = false,
-    AutoFuseChickens = false,
-    AutoGrabScraps = false,
-    AutoRecycleScrap = false,
-    AutoUpgradeRecycler = false,
+    AutoGrabScraps = true,
+    AutoRecycleScrap = true,
+    AutoUpgradeRecycler = true,
     ScrapCapacity = 20,
-    RecycleThreshold = 20,
-    AutoRebirth = false,
-    AutoUpgradeCoop = false,
-    AutoUpgradeFeeder = false,
-    AutoBuyFeeders = false,
-    AutoStartTower = false,
-    AutoNoThanks = false,
+    AutoRebirth = true,
+    AutoUpgradeCoop = true,
+    AutoUpgradeFeeder = true,
+    AutoBuyFeeders = true,
+    AutoStartTower = true,
+    AutoNoThanks = true,
     AutoStartChaos = false
 }
 
 local ToggleUpdaters = {}
-
---==================================================
--- GROUND PHYSICS & NOCLIP ENGINE
---==================================================
 
 local function GetChar()
     return player.Character
@@ -79,7 +61,6 @@ local function GetHumanoid()
     return char and char:FindFirstChildOfClass("Humanoid")
 end
 
--- Active Noclip on Character during farming
 RunService.Stepped:Connect(function()
     if IsRunning and (Flags.AutoGrabScraps or Flags.AutoRecycleScrap) then
         local char = GetChar()
@@ -97,7 +78,6 @@ local function GetFlatDistance(posA, posB)
     return Vector2.new(posA.X - posB.X, posA.Z - posB.Z).Magnitude
 end
 
--- Smooth Ground Run (Keeps feet on ground, zero AI pauses)
 local function GroundRunTo(targetPos, maxWait, stopDistance)
     if not IsRunning then return false end
     local root = GetRoot()
@@ -119,10 +99,6 @@ local function GroundRunTo(targetPos, maxWait, stopDistance)
     return GetFlatDistance(root.Position, targetPos) <= (stopDist + 1.0)
 end
 
---==================================================
--- STRICT BASE-LOCKING & PLOT DETECTION
---==================================================
-
 local mySavedPlot = nil
 local mySavedRecycler = nil
 local mySavedCoopCenter = nil
@@ -134,7 +110,6 @@ local function DetectBase()
 
     local root = GetRoot()
 
-    -- 1. Search for sign with player's username or display name
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("TextLabel") or obj:IsA("SurfaceGui") or obj:IsA("BillboardGui") then
             local text = (obj:IsA("TextLabel") and obj.Text or "")
@@ -148,7 +123,6 @@ local function DetectBase()
         end
     end
 
-    -- 2. Search in workspace.Plots / Farms folders
     if not mySavedPlot then
         for _, folderName in ipairs({"Plots", "Farms", "Coops", "Islands"}) do
             local f = workspace:FindFirstChild(folderName)
@@ -165,7 +139,6 @@ local function DetectBase()
         end
     end
 
-    -- 3. Find Recycler and Coop inside Plot
     if mySavedPlot then
         for _, child in ipairs(mySavedPlot:GetDescendants()) do
             local n = child.Name:lower()
@@ -179,7 +152,6 @@ local function DetectBase()
         end
     end
 
-    -- 4. Proximity Fallback: If not cached yet, anchor to initial character position as Coop Center
     if not mySavedCoopCenter and root then
         mySavedCoopCenter = root.Position
     end
@@ -259,6 +231,53 @@ local function IsInBattle()
     return false
 end
 
+local function GetInGameScrapCount()
+    local pGui = player:FindFirstChild("PlayerGui")
+    if pGui then
+        for _, obj in ipairs(pGui:GetDescendants()) do
+            if obj:IsA("TextLabel") and obj.Visible then
+                local text = obj.Text:lower()
+                local cur, maxVal = text:match("(%d+)%s*/%s*(%d+)")
+                if cur and (text:find("scrap") or text:find("trash") or text:find("capacity") or obj.Name:lower():find("scrap")) then
+                    return tonumber(cur)
+                end
+            end
+        end
+    end
+
+    local ls = player:FindFirstChild("leaderstats") or player:FindFirstChild("Stats") or player
+    if ls then
+        for _, v in ipairs(ls:GetChildren()) do
+            if v:IsA("IntValue") or v:IsA("NumberValue") then
+                local vn = v.Name:lower()
+                if vn:find("scrap") or vn:find("trash") then
+                    return v.Value
+                end
+            end
+        end
+    end
+
+    local char = GetChar()
+    if char then
+        local uniqueModels = {}
+        for _, item in ipairs(char:GetDescendants()) do
+            if item:IsA("BasePart") and item.Name ~= "HumanoidRootPart" and item.Name ~= "Head" and item.Name ~= "Torso" and not item.Name:find("Arm") and not item.Name:find("Leg") and not item.Name:find("Hand") and not item.Name:find("Foot") and not item.Name:find("Upper") and not item.Name:find("Lower") then
+                local n = item.Name:lower()
+                local pn = item.Parent and item.Parent.Name:lower() or ""
+                if n:find("scrap") or n:find("trash") or n:find("drop") or n:find("plate") or pn:find("scrap") then
+                    local p = item.Parent:IsA("Model") and item.Parent or item
+                    uniqueModels[p] = true
+                end
+            end
+        end
+        local count = 0
+        for _ in pairs(uniqueModels) do count = count + 1 end
+        if count > 0 then return count end
+    end
+
+    return nil
+end
+
 local function IsGroundScrap(obj)
     if not obj:IsA("BasePart") or not obj.Parent then return false end
     local ancestorModel = obj:FindFirstAncestorOfClass("Model")
@@ -273,13 +292,7 @@ local function IsGroundScrap(obj)
     return false
 end
 
---==================================================
--- 1. BULLETPROOF 2-STATE HARVESTING ENGINE
---==================================================
-
-local currentScraps = 0
-local CurrentState = "FARMING" -- "FARMING" or "DEPOSITING"
-local ProcessedScraps = {}
+local verifiedScraps = 0
 
 task.spawn(function()
     while IsRunning do
@@ -289,33 +302,30 @@ task.spawn(function()
                 local hum = GetHumanoid()
                 if not root or not hum then task.wait(0.1) return end
 
-                local targetCapacity = Flags.ScrapCapacity or Flags.RecycleThreshold or 20
+                local targetCapacity = tonumber(Flags.ScrapCapacity) or 20
                 local plot, myRecycler, coopCenter = DetectBase()
+                local inGameCount = GetInGameScrapCount()
+                local currentTotal = inGameCount or verifiedScraps
 
-                -- STATE 1: FARMING (Strictly locked inside coop, Recycler is 100% disabled)
-                if CurrentState == "FARMING" then
-                    -- If knocked out of coop, run back inside
-                    if coopCenter and GetFlatDistance(root.Position, coopCenter) > 32 then
+                if Flags.AutoRecycleScrap and myRecycler and currentTotal >= targetCapacity then
+                    GroundRunTo(myRecycler.Position, 4.0, 2.5)
+                    root.AssemblyLinearVelocity = Vector3.zero
+                    task.wait(1.8)
+                    verifiedScraps = 0
+                    if coopCenter then
+                        GroundRunTo(coopCenter, 3.0, 4.0)
+                    end
+                else
+                    if coopCenter and GetFlatDistance(root.Position, coopCenter) > 34 then
                         GroundRunTo(coopCenter, 2.5, 4.0)
                     end
 
-                    -- Check if target capacity has been reached
-                    if currentScraps >= targetCapacity then
-                        if Flags.AutoRecycleScrap and myRecycler then
-                            CurrentState = "DEPOSITING"
-                            return
-                        else
-                            currentScraps = 0
-                        end
-                    end
-
-                    -- Find closest ground scrap inside coop radius
                     local closestPart = nil
                     local minDistance = 9999
 
                     for _, obj in ipairs(workspace:GetDescendants()) do
-                        if not Flags.AutoGrabScraps or not IsRunning or CurrentState ~= "FARMING" then break end
-                        if not ProcessedScraps[obj] and IsGroundScrap(obj) then
+                        if not Flags.AutoGrabScraps or not IsRunning then break end
+                        if IsGroundScrap(obj) then
                             local dist = GetFlatDistance(root.Position, obj.Position)
                             local distFromCoop = coopCenter and GetFlatDistance(obj.Position, coopCenter) or dist
                             if dist < 65 and distFromCoop < 30 and dist < minDistance then
@@ -325,38 +335,23 @@ task.spawn(function()
                         end
                     end
 
-                    -- Walk over scrap
-                    if closestPart then
+                    if closestPart and currentTotal < targetCapacity then
                         GroundRunTo(closestPart.Position, 1.6, 2.2)
-                        ProcessedScraps[closestPart] = true
-                        currentScraps = currentScraps + 1
+                        local waited = 0
+                        while closestPart.Parent and waited < 0.25 do
+                            task.wait(0.05)
+                            waited = waited + 0.05
+                        end
+                        if not closestPart.Parent then
+                            verifiedScraps = verifiedScraps + 1
+                        end
                     else
-                        -- No scraps on ground right now: Wait in center of coop for chickens to drop more
                         if coopCenter and GetFlatDistance(root.Position, coopCenter) > 10 then
                             GroundRunTo(coopCenter, 1.5, 3.0)
                         else
                             root.AssemblyLinearVelocity = Vector3.zero
                         end
-                        ProcessedScraps = {}
                         task.wait(0.1)
-                    end
-
-                -- STATE 2: DEPOSITING (ONLY executed when exact target capacity is met)
-                elseif CurrentState == "DEPOSITING" then
-                    if myRecycler then
-                        -- Run directly to OWN recycler
-                        GroundRunTo(myRecycler.Position, 4.0, 2.5)
-                        root.AssemblyLinearVelocity = Vector3.zero
-                        task.wait(1.8) -- Wait on pad until all stacked scraps are converted
-                        currentScraps = 0
-                        ProcessedScraps = {}
-                        -- Run straight back into the coop and switch back to FARMING
-                        if coopCenter then
-                            GroundRunTo(coopCenter, 3.0, 4.0)
-                        end
-                        CurrentState = "FARMING"
-                    else
-                        CurrentState = "FARMING"
                     end
                 end
             end)
@@ -365,10 +360,6 @@ task.spawn(function()
         end
     end
 end)
-
---==================================================
--- 2. TOWER BATTLE ENGINE
---==================================================
 
 local isTowerBusy = false
 task.spawn(function()
@@ -406,10 +397,6 @@ task.spawn(function()
     end
 end)
 
---==================================================
--- 3. STRATEGIC AUTO-REBIRTH WORKFLOW
---==================================================
-
 task.spawn(function()
     while IsRunning do
         if Flags.AutoRebirth and not IsInBattle() then
@@ -445,10 +432,6 @@ task.spawn(function()
                     end
 
                     if canConfirm then
-                        ClickGuiByPattern("fuse")
-                        ClickGuiByPattern("merge")
-                        task.wait(0.2)
-
                         ClickGuiByPattern("upgrade feeder")
                         ClickGuiByPattern("upgrade incubator")
                         ClickGuiByPattern("upgrade coop")
@@ -464,8 +447,7 @@ task.spawn(function()
                         mySavedPlot = nil
                         mySavedRecycler = nil
                         mySavedCoopCenter = nil
-                        currentScraps = 0
-                        CurrentState = "FARMING"
+                        verifiedScraps = 0
                         isTowerBusy = false
                     else
                         ClickGuiByPattern("close")
@@ -476,10 +458,6 @@ task.spawn(function()
         task.wait(2.5)
     end
 end)
-
---==================================================
--- 4. UTILITY & UPGRADE AUTOMATIONS
---==================================================
 
 task.spawn(function()
     while IsRunning do
@@ -524,18 +502,6 @@ end)
 
 task.spawn(function()
     while IsRunning do
-        if Flags.AutoFuseChickens and not IsInBattle() then
-            pcall(function()
-                ClickGuiByPattern("fuse")
-                ClickGuiByPattern("merge")
-            end)
-        end
-        task.wait(1)
-    end
-end)
-
-task.spawn(function()
-    while IsRunning do
         if Flags.AutoUpgradeRecycler and not IsInBattle() then
             pcall(function() ClickGuiByPattern("upgrade recycler") end)
         end
@@ -551,10 +517,6 @@ task.spawn(function()
         task.wait(1)
     end
 end)
-
---==================================================
--- CLEAN SHUTDOWN FUNCTION
---==================================================
 
 local Gui = Instance.new("ScreenGui", CoreGui)
 Gui.Name = "ERDEVA_HUB"
@@ -575,12 +537,7 @@ local function Shutdown()
     if Gui then
         Gui:Destroy()
     end
-    print("[ERDEVA HUB] Terminated.")
 end
-
---==================================================
--- GUI CREATION
---==================================================
 
 local Main = Instance.new("Frame", Gui)
 Main.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -594,7 +551,6 @@ local Stroke = Instance.new("UIStroke", Main)
 Stroke.Color = C.Red
 Stroke.Thickness = 1.2
 
--- TopBar
 local Top = Instance.new("Frame", Main)
 Top.Size = UDim2.new(1, 0, 0, 34)
 Top.BackgroundColor3 = C.Top
@@ -611,7 +567,6 @@ Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
 
--- Close Button
 local Close = Instance.new("TextButton", Top)
 Close.Size = UDim2.fromOffset(24, 24)
 Close.Position = UDim2.new(1, -28, 0.5, -12)
@@ -623,7 +578,6 @@ Close.Font = Enum.Font.GothamBold
 Instance.new("UICorner", Close).CornerRadius = UDim.new(0, 5)
 Close.MouseButton1Click:Connect(Shutdown)
 
--- Minimize Button
 local Min = Instance.new("TextButton", Top)
 Min.Size = UDim2.fromOffset(24, 24)
 Min.Position = UDim2.new(1, -56, 0.5, -12)
@@ -640,7 +594,6 @@ Min.MouseButton1Click:Connect(function()
     tw(Main, {Size = UDim2.fromOffset(W, minState and 34 or H)}, 0.15)
 end)
 
--- Screen-Clamped Dragging
 local drag, dStart, fStart
 local function SetupDrag(frame)
     frame.InputBegan:Connect(function(i)
@@ -676,7 +629,6 @@ UserInputService.InputChanged:Connect(function(i)
     end
 end)
 
--- Tab Bar
 local TabFrame = Instance.new("Frame", Main)
 TabFrame.Size = UDim2.new(1, 0, 0, 28)
 TabFrame.Position = UDim2.fromOffset(0, 34)
@@ -686,7 +638,6 @@ TabFrame.BorderSizePixel = 0
 local TabList = Instance.new("UIListLayout", TabFrame)
 TabList.FillDirection = Enum.FillDirection.Horizontal
 
--- Content Area
 local Content = Instance.new("ScrollingFrame", Main)
 Content.Size = UDim2.new(1, -12, 1, -68)
 Content.Position = UDim2.fromOffset(6, 64)
@@ -700,7 +651,6 @@ Content.AutomaticCanvasSize = Enum.AutomaticSize.Y
 local CLayout = Instance.new("UIListLayout", Content)
 CLayout.Padding = UDim.new(0, 4)
 
--- System Tabs & Elements
 local Pages, CurTab, TabBtns = {}, nil, {}
 local function SetTab(name)
     CurTab = name
@@ -742,7 +692,7 @@ local function SetToggleState(flagKey, targetState)
     end
 end
 
-local function AddToggle(parent, text, flagKey)
+local function AddToggle(parent, text, flagKey, defaultVal)
     local f = Instance.new("Frame", parent)
     f.Size = UDim2.new(1, 0, 0, 30)
     f.BackgroundColor3 = C.Card
@@ -761,13 +711,13 @@ local function AddToggle(parent, text, flagKey)
     local b = Instance.new("TextButton", f)
     b.Size = UDim2.fromOffset(36, 18)
     b.Position = UDim2.new(1, -42, 0.5, -9)
-    b.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    b.BackgroundColor3 = (defaultVal and C.Red or Color3.fromRGB(50, 50, 50))
     b.Text = ""
     Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
 
     local k = Instance.new("Frame", b)
     k.Size = UDim2.fromOffset(14, 14)
-    k.Position = UDim2.fromOffset(2, 2)
+    k.Position = (defaultVal and UDim2.fromOffset(20, 2) or UDim2.fromOffset(2, 2))
     k.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
     Instance.new("UICorner", k).CornerRadius = UDim.new(1, 0)
 
@@ -785,7 +735,8 @@ local function AddToggle(parent, text, flagKey)
         if flagKey == "AutoRebirth" then
             SetToggleState("AutoGrabScraps", newState)
             SetToggleState("AutoRecycleScrap", newState)
-            SetToggleState("AutoFuseChickens", newState)
+            SetToggleState("AutoUpgradeRecycler", newState)
+            SetToggleState("AutoBuyFeeders", newState)
             SetToggleState("AutoUpgradeFeeder", newState)
             SetToggleState("AutoUpgradeCoop", newState)
             SetToggleState("AutoStartTower", newState)
@@ -851,32 +802,26 @@ local function AddSlider(parent, text, maxV, defV, flagKey)
     end)
 end
 
--- Setup Tabs
 local FarmPage = MakeTab("Farm", 1)
 local PlotPage = MakeTab("Plot", 2)
 local BattlePage = MakeTab("Battle", 3)
 local InfoPage = MakeTab("Info", 4)
 
--- 1. Farm
-AddToggle(FarmPage, "Auto Open Eggs", "AutoOpenEggs")
-AddToggle(FarmPage, "Auto Fuse Chickens", "AutoFuseChickens")
-AddToggle(FarmPage, "Auto Grab Scraps", "AutoGrabScraps")
-AddToggle(FarmPage, "Auto Recycle Scrap", "AutoRecycleScrap")
-AddToggle(FarmPage, "Auto Upgrade Recycler", "AutoUpgradeRecycler")
+AddToggle(FarmPage, "Auto Open Eggs", "AutoOpenEggs", false)
+AddToggle(FarmPage, "Auto Grab Scraps", "AutoGrabScraps", true)
+AddToggle(FarmPage, "Auto Recycle Scrap", "AutoRecycleScrap", true)
+AddToggle(FarmPage, "Auto Upgrade Recycler", "AutoUpgradeRecycler", true)
 AddSlider(FarmPage, "Scrap Capacity", 50, 20, "ScrapCapacity")
 
--- 2. Plot
-AddToggle(PlotPage, "Auto Rebirth (Master)", "AutoRebirth")
-AddToggle(PlotPage, "Auto Upgrade Coop", "AutoUpgradeCoop")
-AddToggle(PlotPage, "Auto Upgrade Feeder", "AutoUpgradeFeeder")
-AddToggle(PlotPage, "Auto Buy Feeders", "AutoBuyFeeders")
+AddToggle(PlotPage, "Auto Rebirth (Master)", "AutoRebirth", true)
+AddToggle(PlotPage, "Auto Buy Feeders", "AutoBuyFeeders", true)
+AddToggle(PlotPage, "Auto Upgrade Feeder", "AutoUpgradeFeeder", true)
+AddToggle(PlotPage, "Auto Upgrade Coop", "AutoUpgradeCoop", true)
 
--- 3. Battle
-AddToggle(BattlePage, "Auto Start Tower", "AutoStartTower")
-AddToggle(BattlePage, "Auto No Thanks", "AutoNoThanks")
-AddToggle(BattlePage, "Auto Start Chaos", "AutoStartChaos")
+AddToggle(BattlePage, "Auto Start Tower", "AutoStartTower", true)
+AddToggle(BattlePage, "Auto No Thanks", "AutoNoThanks", true)
+AddToggle(BattlePage, "Auto Start Chaos", "AutoStartChaos", false)
 
--- 4. Info
 local function AddInfo(k, v)
     local f = Instance.new("Frame", InfoPage)
     f.Size = UDim2.new(1, 0, 0, 26)
@@ -909,4 +854,3 @@ AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
 SetTab("Farm")
-print("[ERDEVA HUB] State-Machine Harvester Ready.")
