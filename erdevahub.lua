@@ -1,9 +1,10 @@
 --[[
-    ERDEVA HUB - Plot-Locked Automation
-    - Targets ONLY the player's OWN Recycler (No other players' machines)
-    - Full Scrap -> Own Recycler -> Cash Conversion
-    - 100% Native Safe Movement (No Kicks)
-    - Clean Shutdown on GUI Close [X]
+    ERDEVA HUB - Fast, Obstacle-Jumping & Plot-Locked Automation
+    - Auto-Jump over fences/obstacles (Never gets stuck)
+    - Boosted WalkSpeed (Faster, safe from kicks)
+    - Configurable Scrap Capacity Slider (Collects desired amount, e.g. 20)
+    - Screen-Clamped Dragging (TopBar never gets lost off-screen)
+    - Full clean termination on [X]
 ]]
 
 local Players = game:GetService("Players")
@@ -44,7 +45,8 @@ local Flags = {
     AutoGrabScraps = false,
     AutoRecycleScrap = false,
     AutoUpgradeRecycler = false,
-    RecycleThreshold = 10,
+    ScrapCapacity = 20,
+    RecycleThreshold = 20,
     AutoRebirth = false,
     AutoUpgradeCoop = false,
     AutoUpgradeFeeder = false,
@@ -55,7 +57,7 @@ local Flags = {
 }
 
 --==================================================
--- PLOT & NAVIGATION ENGINE
+-- NAVIGATION & OBSTACLE CLEARANCE ENGINE
 --==================================================
 
 local function GetChar()
@@ -70,6 +72,38 @@ end
 local function GetHumanoid()
     local char = GetChar()
     return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+local function WalkTo(targetPos, maxWait)
+    if not IsRunning then return false end
+    local hum = GetHumanoid()
+    local root = GetRoot()
+    if not hum or not root then return false end
+
+    if hum.WalkSpeed < 26 then
+        hum.WalkSpeed = 26
+    end
+
+    local dist = (root.Position - targetPos).Magnitude
+    if dist <= 3.5 then return true end
+
+    hum:MoveTo(targetPos)
+
+    local start = tick()
+    local lastPos = root.Position
+    local timeout = maxWait or 2.5
+
+    while IsRunning and (root.Position - targetPos).Magnitude > 3.5 and (tick() - start < timeout) do
+        task.wait(0.12)
+        if (root.Position - lastPos).Magnitude < 0.9 and (root.Position - targetPos).Magnitude > 3.8 then
+            hum.Jump = true
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            task.wait(0.1)
+            hum:MoveTo(targetPos)
+        end
+        lastPos = root.Position
+    end
+    return (root.Position - targetPos).Magnitude <= 4.5
 end
 
 local myPlotCache = nil
@@ -125,7 +159,7 @@ local function FindMyRecycler()
     end
 
     local closestPart, closestModel = nil, nil
-    local minD = 48
+    local minD = 50
     for _, obj in ipairs(workspace:GetDescendants()) do
         local n = obj.Name:lower()
         if (n:find("recycler") or n:find("deposit") or n:find("trashbin")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
@@ -142,25 +176,6 @@ local function FindMyRecycler()
     end
 
     return closestPart, closestModel
-end
-
-local function WalkTo(targetPos, maxWait)
-    if not IsRunning then return false end
-    local hum = GetHumanoid()
-    local root = GetRoot()
-    if not hum or not root then return false end
-
-    local dist = (root.Position - targetPos).Magnitude
-    if dist <= 3.5 then return true end
-
-    hum:MoveTo(targetPos)
-
-    local start = tick()
-    local timeout = maxWait or 3.0
-    while IsRunning and (root.Position - targetPos).Magnitude > 3.5 and (tick() - start < timeout) do
-        task.wait(0.08)
-    end
-    return (root.Position - targetPos).Magnitude <= 4.5
 end
 
 local function ClickButton(btn)
@@ -230,7 +245,9 @@ task.spawn(function()
                 local root = GetRoot()
                 if not root then task.wait(0.5) return end
 
-                if Flags.AutoRecycleScrap and collectedCount >= Flags.RecycleThreshold then
+                local targetCapacity = Flags.ScrapCapacity or Flags.RecycleThreshold or 20
+
+                if Flags.AutoRecycleScrap and collectedCount >= targetCapacity then
                     local recPart, recModel = FindMyRecycler()
                     if recPart then
                         WalkTo(recPart.Position, 3.5)
@@ -246,7 +263,7 @@ task.spawn(function()
                             firetouchinterest(root, recPart, 1)
                         end
 
-                        task.wait(0.6)
+                        task.wait(0.5)
                         collectedCount = 0
                         ProcessedScraps = {}
                     end
@@ -262,7 +279,7 @@ task.spawn(function()
                             local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
                             if part and not ProcessedScraps[part] then
                                 local dist = (root.Position - part.Position).Magnitude
-                                if dist < 80 then
+                                if dist < 85 then
                                     table.insert(availableScraps, {Part = part, Obj = obj, Dist = dist})
                                 end
                             end
@@ -272,9 +289,9 @@ task.spawn(function()
 
                 table.sort(availableScraps, function(a, b) return a.Dist < b.Dist end)
 
-                if #availableScraps > 0 then
+                if #availableScraps > 0 and collectedCount < targetCapacity then
                     local target = availableScraps[1]
-                    WalkTo(target.Part.Position, 2.5)
+                    WalkTo(target.Part.Position, 2.0)
 
                     local prompt = target.Obj:FindFirstChildWhichIsA("ProximityPrompt", true) or target.Part:FindFirstChildWhichIsA("ProximityPrompt", true)
                     if prompt and fireproximityprompt then fireproximityprompt(prompt) end
@@ -290,7 +307,7 @@ task.spawn(function()
                     ProcessedScraps[target.Obj] = true
                     ProcessedScraps[target.Part] = true
                     collectedCount = collectedCount + 1
-                    task.wait(0.05)
+                    task.wait(0.04)
                 else
                     if Flags.AutoRecycleScrap and collectedCount > 0 then
                         local recPart, recModel = FindMyRecycler()
@@ -307,7 +324,7 @@ task.spawn(function()
                         end
                     end
                     ProcessedScraps = {}
-                    task.wait(0.4)
+                    task.wait(0.3)
                 end
             end)
         else
@@ -530,20 +547,39 @@ Min.MouseButton1Click:Connect(function()
     tw(Main, {Size = UDim2.fromOffset(W, minState and 34 or H)}, 0.15)
 end)
 
--- Drag System
+-- Screen-Clamped Dragging (Never goes off-screen)
 local drag, dStart, fStart
-Top.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-        drag = true
-        dStart = i.Position
-        fStart = Main.Position
-        i.Changed:Connect(function() if i.UserInputState == Enum.UserInputState.End then drag = false end end)
-    end
-end)
+local function SetupDrag(frame)
+    frame.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            drag = true
+            dStart = i.Position
+            fStart = Main.Position
+            i.Changed:Connect(function()
+                if i.UserInputState == Enum.UserInputState.End then
+                    drag = false
+                end
+            end)
+        end
+    end)
+end
+
+SetupDrag(Top)
+
 UserInputService.InputChanged:Connect(function(i)
     if drag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
         local d = i.Position - dStart
-        Main.Position = UDim2.new(fStart.X.Scale, fStart.X.Offset + d.X, fStart.Y.Scale, fStart.Y.Offset + d.Y)
+        local cam = workspace.CurrentCamera
+        local vSize = cam and cam.ViewportSize or Vector2.new(1920, 1080)
+
+        local curH = minState and 34 or H
+        local targetX = fStart.X.Offset + d.X
+        local targetY = fStart.Y.Offset + d.Y
+
+        local clampedX = math.clamp(targetX, -vSize.X/2 + W/2 + 10, vSize.X/2 - W/2 - 10)
+        local clampedY = math.clamp(targetY, -vSize.Y/2 + curH/2 + 25, vSize.Y/2 - curH/2 - 10)
+
+        Main.Position = UDim2.new(0.5, clampedX, 0.5, clampedY)
     end
 end)
 
@@ -693,6 +729,7 @@ local function AddSlider(parent, text, maxV, defV, flagKey)
             local r = math.clamp((i.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
             fill.Size = UDim2.new(r, 0, 1, 0)
             local val = math.floor(r * maxV + 0.5)
+            if val < 1 then val = 1 end
             vl.Text = tostring(val) .. "/" .. tostring(maxV)
             Flags[flagKey] = val
         end
@@ -711,7 +748,7 @@ AddToggle(FarmPage, "Auto Fuse Chickens", "AutoFuseChickens")
 AddToggle(FarmPage, "Auto Grab Scraps", "AutoGrabScraps")
 AddToggle(FarmPage, "Auto Recycle Scrap", "AutoRecycleScrap")
 AddToggle(FarmPage, "Auto Upgrade Recycler", "AutoUpgradeRecycler")
-AddSlider(FarmPage, "Recycle threshold", 20, 10, "RecycleThreshold")
+AddSlider(FarmPage, "Scrap Capacity", 50, 20, "ScrapCapacity")
 
 -- 2. Plot
 AddToggle(PlotPage, "Auto Rebirth", "AutoRebirth")
@@ -757,4 +794,4 @@ AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
 SetTab("Farm")
-print("[ERDEVA HUB] Plot-Locked Recycler automation ready.")
+print("[ERDEVA HUB] Fast Jump-Navigation & Capacity Slider Ready.")
