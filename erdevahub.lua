@@ -101,11 +101,10 @@ end
 
 local mySavedPlot = nil
 local mySavedRecycler = nil
-local mySavedCoopCenter = nil
 
 local function DetectBase()
-    if mySavedPlot and mySavedRecycler and mySavedCoopCenter then
-        return mySavedPlot, mySavedRecycler, mySavedCoopCenter
+    if mySavedPlot and mySavedRecycler and mySavedRecycler.Parent then
+        return mySavedPlot, mySavedRecycler
     end
 
     local root = GetRoot()
@@ -144,21 +143,14 @@ local function DetectBase()
             local n = child.Name:lower()
             if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
                 local part = child:IsA("BasePart") and child or child:FindFirstChildWhichIsA("BasePart")
-                if part then mySavedRecycler = part end
-            end
-            if (n:find("dirt") or n:find("floor") or n:find("ground") or n:find("coop")) and child:IsA("BasePart") then
-                mySavedCoopCenter = child.Position
+                if part then mySavedRecycler = part break end
             end
         end
     end
 
-    if not mySavedCoopCenter and root then
-        mySavedCoopCenter = root.Position
-    end
-
     if not mySavedRecycler and root then
         local closest = nil
-        local minD = 50
+        local minD = 65
         for _, obj in ipairs(workspace:GetDescendants()) do
             local n = obj.Name:lower()
             if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
@@ -175,7 +167,7 @@ local function DetectBase()
         mySavedRecycler = closest
     end
 
-    return mySavedPlot, mySavedRecycler, mySavedCoopCenter
+    return mySavedPlot, mySavedRecycler
 end
 
 local function ClickButton(btn)
@@ -210,6 +202,47 @@ local function ClickGuiByPattern(pattern)
     return false
 end
 
+local function Trigger3DUpgrade(pattern)
+    local plot = mySavedPlot or workspace
+    pattern = pattern:lower()
+    for _, obj in ipairs(plot:GetDescendants()) do
+        local n = obj.Name:lower()
+        local matches = n:find(pattern)
+        if not matches and (obj:IsA("TextLabel") or obj:IsA("BillboardGui")) then
+            local t = obj:IsA("TextLabel") and obj.Text:lower() or ""
+            matches = t:find(pattern)
+        end
+        if matches then
+            local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
+            if part then
+                local prompt = part:FindFirstChildOfClass("ProximityPrompt") or obj:FindFirstChildOfClass("ProximityPrompt")
+                if prompt then
+                    pcall(function() prompt:InputHoldBegin() task.wait(0.05) prompt:InputHoldEnd() end)
+                end
+                local click = part:FindFirstChildOfClass("ClickDetector") or obj:FindFirstChildOfClass("ClickDetector")
+                if click and fireclickdetector then
+                    pcall(function() fireclickdetector(click) end)
+                end
+            end
+        end
+    end
+
+    for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
+        if remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction") then
+            local rn = remote.Name:lower()
+            if rn:find(pattern) or (pattern:find("feeder") and (rn:find("buy") or rn:find("feed"))) or (pattern:find("coop") and rn:find("coop")) or (pattern:find("recycle") and rn:find("recycle")) then
+                pcall(function()
+                    if remote:IsA("RemoteEvent") then
+                        remote:FireServer()
+                    elseif remote:IsA("RemoteFunction") then
+                        remote:InvokeServer()
+                    end
+                end)
+            end
+        end
+    end
+end
+
 local function IsInBattle()
     local pGui = player:FindFirstChild("PlayerGui")
     if not pGui then return false end
@@ -231,53 +264,6 @@ local function IsInBattle()
     return false
 end
 
-local function GetInGameScrapCount()
-    local pGui = player:FindFirstChild("PlayerGui")
-    if pGui then
-        for _, obj in ipairs(pGui:GetDescendants()) do
-            if obj:IsA("TextLabel") and obj.Visible then
-                local text = obj.Text:lower()
-                local cur, maxVal = text:match("(%d+)%s*/%s*(%d+)")
-                if cur and (text:find("scrap") or text:find("trash") or text:find("capacity") or obj.Name:lower():find("scrap")) then
-                    return tonumber(cur)
-                end
-            end
-        end
-    end
-
-    local ls = player:FindFirstChild("leaderstats") or player:FindFirstChild("Stats") or player
-    if ls then
-        for _, v in ipairs(ls:GetChildren()) do
-            if v:IsA("IntValue") or v:IsA("NumberValue") then
-                local vn = v.Name:lower()
-                if vn:find("scrap") or vn:find("trash") then
-                    return v.Value
-                end
-            end
-        end
-    end
-
-    local char = GetChar()
-    if char then
-        local uniqueModels = {}
-        for _, item in ipairs(char:GetDescendants()) do
-            if item:IsA("BasePart") and item.Name ~= "HumanoidRootPart" and item.Name ~= "Head" and item.Name ~= "Torso" and not item.Name:find("Arm") and not item.Name:find("Leg") and not item.Name:find("Hand") and not item.Name:find("Foot") and not item.Name:find("Upper") and not item.Name:find("Lower") then
-                local n = item.Name:lower()
-                local pn = item.Parent and item.Parent.Name:lower() or ""
-                if n:find("scrap") or n:find("trash") or n:find("drop") or n:find("plate") or pn:find("scrap") then
-                    local p = item.Parent:IsA("Model") and item.Parent or item
-                    uniqueModels[p] = true
-                end
-            end
-        end
-        local count = 0
-        for _ in pairs(uniqueModels) do count = count + 1 end
-        if count > 0 then return count end
-    end
-
-    return nil
-end
-
 local function IsGroundScrap(obj)
     if not obj:IsA("BasePart") or not obj.Parent then return false end
     local ancestorModel = obj:FindFirstAncestorOfClass("Model")
@@ -292,7 +278,8 @@ local function IsGroundScrap(obj)
     return false
 end
 
-local verifiedScraps = 0
+local collectedScraps = 0
+local BlacklistedScraps = {}
 
 task.spawn(function()
     while IsRunning do
@@ -303,55 +290,37 @@ task.spawn(function()
                 if not root or not hum then task.wait(0.1) return end
 
                 local targetCapacity = tonumber(Flags.ScrapCapacity) or 20
-                local plot, myRecycler, coopCenter = DetectBase()
-                local inGameCount = GetInGameScrapCount()
-                local currentTotal = inGameCount or verifiedScraps
+                local plot, myRecycler = DetectBase()
 
-                if Flags.AutoRecycleScrap and myRecycler and currentTotal >= targetCapacity then
+                if Flags.AutoRecycleScrap and myRecycler and collectedScraps >= targetCapacity then
                     GroundRunTo(myRecycler.Position, 4.0, 2.5)
                     root.AssemblyLinearVelocity = Vector3.zero
-                    task.wait(1.8)
-                    verifiedScraps = 0
-                    if coopCenter then
-                        GroundRunTo(coopCenter, 3.0, 4.0)
-                    end
+                    task.wait(1.5)
+                    collectedScraps = 0
+                    BlacklistedScraps = {}
                 else
-                    if coopCenter and GetFlatDistance(root.Position, coopCenter) > 34 then
-                        GroundRunTo(coopCenter, 2.5, 4.0)
-                    end
-
                     local closestPart = nil
                     local minDistance = 9999
 
                     for _, obj in ipairs(workspace:GetDescendants()) do
                         if not Flags.AutoGrabScraps or not IsRunning then break end
-                        if IsGroundScrap(obj) then
+                        if not BlacklistedScraps[obj] and IsGroundScrap(obj) then
                             local dist = GetFlatDistance(root.Position, obj.Position)
-                            local distFromCoop = coopCenter and GetFlatDistance(obj.Position, coopCenter) or dist
-                            if dist < 65 and distFromCoop < 30 and dist < minDistance then
+                            if dist < 85 and dist < minDistance then
                                 minDistance = dist
                                 closestPart = obj
                             end
                         end
                     end
 
-                    if closestPart and currentTotal < targetCapacity then
+                    if closestPart and collectedScraps < targetCapacity then
                         GroundRunTo(closestPart.Position, 1.6, 2.2)
-                        local waited = 0
-                        while closestPart.Parent and waited < 0.25 do
-                            task.wait(0.05)
-                            waited = waited + 0.05
-                        end
-                        if not closestPart.Parent then
-                            verifiedScraps = verifiedScraps + 1
-                        end
+                        BlacklistedScraps[closestPart] = true
+                        collectedScraps = collectedScraps + 1
                     else
-                        if coopCenter and GetFlatDistance(root.Position, coopCenter) > 10 then
-                            GroundRunTo(coopCenter, 1.5, 3.0)
-                        else
-                            root.AssemblyLinearVelocity = Vector3.zero
-                        end
-                        task.wait(0.1)
+                        root.AssemblyLinearVelocity = Vector3.zero
+                        BlacklistedScraps = {}
+                        task.wait(0.08)
                     end
                 end
             end)
@@ -432,6 +401,10 @@ task.spawn(function()
                     end
 
                     if canConfirm then
+                        Trigger3DUpgrade("upgrade feeder")
+                        Trigger3DUpgrade("upgrade incubator")
+                        Trigger3DUpgrade("upgrade coop")
+                        Trigger3DUpgrade("buy feeder")
                         ClickGuiByPattern("upgrade feeder")
                         ClickGuiByPattern("upgrade incubator")
                         ClickGuiByPattern("upgrade coop")
@@ -446,8 +419,8 @@ task.spawn(function()
                         task.wait(3.0)
                         mySavedPlot = nil
                         mySavedRecycler = nil
-                        mySavedCoopCenter = nil
-                        verifiedScraps = 0
+                        collectedScraps = 0
+                        BlacklistedScraps = {}
                         isTowerBusy = false
                     else
                         ClickGuiByPattern("close")
@@ -503,18 +476,34 @@ end)
 task.spawn(function()
     while IsRunning do
         if Flags.AutoUpgradeRecycler and not IsInBattle() then
-            pcall(function() ClickGuiByPattern("upgrade recycler") end)
+            pcall(function()
+                ClickGuiByPattern("upgrade recycler")
+                Trigger3DUpgrade("upgrade recycler")
+                Trigger3DUpgrade("recycler")
+            end)
         end
         if Flags.AutoUpgradeCoop and not IsInBattle() then
-            pcall(function() ClickGuiByPattern("upgrade coop") end)
+            pcall(function()
+                ClickGuiByPattern("upgrade coop")
+                Trigger3DUpgrade("upgrade coop")
+                Trigger3DUpgrade("coop")
+            end)
         end
         if Flags.AutoUpgradeFeeder and not IsInBattle() then
-            pcall(function() ClickGuiByPattern("upgrade feeder") end)
+            pcall(function()
+                ClickGuiByPattern("upgrade feeder")
+                Trigger3DUpgrade("upgrade feeder")
+                Trigger3DUpgrade("feeder")
+            end)
         end
         if Flags.AutoBuyFeeders and not IsInBattle() then
-            pcall(function() ClickGuiByPattern("buy feeder") end)
+            pcall(function()
+                ClickGuiByPattern("buy feeder")
+                Trigger3DUpgrade("buy feeder")
+                Trigger3DUpgrade("buyfeeder")
+            end)
         end
-        task.wait(1)
+        task.wait(1.5)
     end
 end)
 
