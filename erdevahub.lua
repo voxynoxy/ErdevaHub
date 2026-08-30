@@ -1,9 +1,9 @@
 --[[
-    ERDEVA HUB - 100% Native & Anti-Cheat Safe
-    - Pure Humanoid:MoveTo physics (No CFrame / No Tweens / No Kicks)
-    - Fixed "Cash Not Enough" bug (No accidental purchase clicks)
-    - Smooth continuous Scrap -> Recycler -> Tower -> Rebirth loop
-    - Full clean termination on [X]
+    ERDEVA HUB - Plot-Locked Automation
+    - Targets ONLY the player's OWN Recycler (No other players' machines)
+    - Full Scrap -> Own Recycler -> Cash Conversion
+    - 100% Native Safe Movement (No Kicks)
+    - Clean Shutdown on GUI Close [X]
 ]]
 
 local Players = game:GetService("Players")
@@ -55,7 +55,7 @@ local Flags = {
 }
 
 --==================================================
--- NATIVE HUMAN NAVIGATION (ZERO KICK RISK)
+-- PLOT & NAVIGATION ENGINE
 --==================================================
 
 local function GetChar()
@@ -72,7 +72,78 @@ local function GetHumanoid()
     return char and char:FindFirstChildOfClass("Humanoid")
 end
 
--- 100% standard Roblox walking (Never flagged by server)
+local myPlotCache = nil
+local function GetMyPlot()
+    if myPlotCache and myPlotCache.Parent then return myPlotCache end
+
+    for _, folderName in ipairs({"Plots", "Farms", "Coops", "Islands"}) do
+        local f = workspace:FindFirstChild(folderName)
+        if f then
+            for _, p in ipairs(f:GetChildren()) do
+                local owner = p:FindFirstChild("Owner") or p:FindFirstChild("Player")
+                if owner and (tostring(owner.Value) == player.Name or tostring(owner.Value) == tostring(player.UserId)) then
+                    myPlotCache = p
+                    return p
+                end
+                if p.Name == player.Name or p.Name:find(player.Name) then
+                    myPlotCache = p
+                    return p
+                end
+            end
+        end
+    end
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("TextLabel") and (obj.Text:find(player.Name) or obj.Text:find(player.DisplayName)) then
+            local model = obj:FindFirstAncestorWhichIsA("Model")
+            if model and model.Parent ~= workspace then
+                myPlotCache = model.Parent
+                return model.Parent
+            elseif model then
+                myPlotCache = model
+                return model
+            end
+        end
+    end
+
+    return nil
+end
+
+local function FindMyRecycler()
+    local root = GetRoot()
+    if not root then return nil, nil end
+
+    local plot = GetMyPlot()
+    if plot then
+        for _, obj in ipairs(plot:GetDescendants()) do
+            local n = obj.Name:lower()
+            if (n:find("recycler") or n:find("deposit") or n:find("trashbin")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
+                local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
+                if part then return part, obj end
+            end
+        end
+    end
+
+    local closestPart, closestModel = nil, nil
+    local minD = 48
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        local n = obj.Name:lower()
+        if (n:find("recycler") or n:find("deposit") or n:find("trashbin")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
+            local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
+            if part then
+                local d = (root.Position - part.Position).Magnitude
+                if d < minD then
+                    minD = d
+                    closestPart = part
+                    closestModel = obj
+                end
+            end
+        end
+    end
+
+    return closestPart, closestModel
+end
+
 local function WalkTo(targetPos, maxWait)
     if not IsRunning then return false end
     local hum = GetHumanoid()
@@ -90,22 +161,6 @@ local function WalkTo(targetPos, maxWait)
         task.wait(0.08)
     end
     return (root.Position - targetPos).Magnitude <= 4.5
-end
-
--- Find the physical Recycler Bin (Rusty box)
-local function FindRecyclerBin()
-    local root = GetRoot()
-    if not root then return nil end
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        local n = obj.Name:lower()
-        if (n:find("recycler") or n:find("deposit") or n:find("trashbin")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
-            local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
-            if part and (root.Position - part.Position).Magnitude < 180 then
-                return part, obj
-            end
-        end
-    end
-    return nil, nil
 end
 
 local function ClickButton(btn)
@@ -162,7 +217,7 @@ local function IsInBattle()
 end
 
 --==================================================
--- STATE MACHINE: NATURAL SCRAP HARVEST & DEPOSIT
+-- STATE MACHINE: HARVEST & OWN RECYCLER DEPOSIT
 --==================================================
 
 local collectedCount = 0
@@ -175,11 +230,10 @@ task.spawn(function()
                 local root = GetRoot()
                 if not root then task.wait(0.5) return end
 
-                -- 1. Deposit when holding scraps and reached threshold
                 if Flags.AutoRecycleScrap and collectedCount >= Flags.RecycleThreshold then
-                    local recPart, recModel = FindRecyclerBin()
+                    local recPart, recModel = FindMyRecycler()
                     if recPart then
-                        WalkTo(recPart.Position, 4)
+                        WalkTo(recPart.Position, 3.5)
 
                         local prompt = recModel:FindFirstChildWhichIsA("ProximityPrompt", true) or recPart:FindFirstChildWhichIsA("ProximityPrompt", true)
                         if prompt and fireproximityprompt then fireproximityprompt(prompt) end
@@ -192,13 +246,12 @@ task.spawn(function()
                             firetouchinterest(root, recPart, 1)
                         end
 
-                        task.wait(0.5)
+                        task.wait(0.6)
                         collectedCount = 0
                         ProcessedScraps = {}
                     end
                 end
 
-                -- 2. Scan and walk to ground scraps
                 local availableScraps = {}
                 for _, obj in ipairs(workspace:GetDescendants()) do
                     if not Flags.AutoGrabScraps or not IsRunning then break end
@@ -209,7 +262,7 @@ task.spawn(function()
                             local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
                             if part and not ProcessedScraps[part] then
                                 local dist = (root.Position - part.Position).Magnitude
-                                if dist < 120 then
+                                if dist < 80 then
                                     table.insert(availableScraps, {Part = part, Obj = obj, Dist = dist})
                                 end
                             end
@@ -239,11 +292,10 @@ task.spawn(function()
                     collectedCount = collectedCount + 1
                     task.wait(0.05)
                 else
-                    -- No more scraps on ground: deposit whatever we're holding
                     if Flags.AutoRecycleScrap and collectedCount > 0 then
-                        local recPart, recModel = FindRecyclerBin()
+                        local recPart, recModel = FindMyRecycler()
                         if recPart then
-                            WalkTo(recPart.Position, 4)
+                            WalkTo(recPart.Position, 3.5)
                             local prompt = recModel:FindFirstChildWhichIsA("ProximityPrompt", true) or recPart:FindFirstChildWhichIsA("ProximityPrompt", true)
                             if prompt and fireproximityprompt then fireproximityprompt(prompt) end
                             if firetouchinterest then
@@ -265,10 +317,9 @@ task.spawn(function()
 end)
 
 --==================================================
--- AUTOMATION: TOWER, REBIRTH & BATTLE
+-- OTHER AUTOMATIONS
 --==================================================
 
--- AUTO TOWER (Start -> Wait Fight -> Claim -> Return)
 local isTowerBusy = false
 task.spawn(function()
     while IsRunning do
@@ -305,7 +356,6 @@ task.spawn(function()
     end
 end)
 
--- AUTO REBIRTH
 task.spawn(function()
     while IsRunning do
         if Flags.AutoRebirth and not IsInBattle() then
@@ -321,7 +371,6 @@ task.spawn(function()
     end
 end)
 
--- AUTO NO THANKS
 task.spawn(function()
     while IsRunning do
         if Flags.AutoNoThanks then
@@ -337,7 +386,6 @@ task.spawn(function()
     end
 end)
 
--- AUTO CHAOS
 task.spawn(function()
     while IsRunning do
         if Flags.AutoStartChaos and not IsInBattle() then
@@ -351,7 +399,6 @@ task.spawn(function()
     end
 end)
 
--- AUTO OPEN EGGS
 task.spawn(function()
     while IsRunning do
         if Flags.AutoOpenEggs and not IsInBattle() then
@@ -365,7 +412,6 @@ task.spawn(function()
     end
 end)
 
--- AUTO FUSE CHICKENS
 task.spawn(function()
     while IsRunning do
         if Flags.AutoFuseChickens and not IsInBattle() then
@@ -378,7 +424,6 @@ task.spawn(function()
     end
 end)
 
--- AUTO UPGRADE RECYCLER, COOP & FEEDERS
 task.spawn(function()
     while IsRunning do
         if Flags.AutoUpgradeRecycler and not IsInBattle() then
@@ -712,4 +757,4 @@ AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
 SetTab("Farm")
-print("[ERDEVA HUB] Native movement active. Safe from kicks.")
+print("[ERDEVA HUB] Plot-Locked Recycler automation ready.")
