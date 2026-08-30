@@ -32,16 +32,16 @@ end
 
 local Flags = {
     AutoOpenEggs = false,
-    AutoGrabScraps = true,
-    AutoRecycleScrap = true,
-    AutoUpgradeRecycler = true,
+    AutoGrabScraps = false,
+    AutoRecycleScrap = false,
+    AutoUpgradeRecycler = false,
     ScrapCapacity = 20,
-    AutoRebirth = true,
-    AutoUpgradeCoop = true,
-    AutoUpgradeFeeder = true,
-    AutoBuyFeeders = true,
-    AutoStartTower = true,
-    AutoNoThanks = true,
+    AutoRebirth = false,
+    AutoUpgradeCoop = false,
+    AutoUpgradeFeeder = false,
+    AutoBuyFeeders = false,
+    AutoStartTower = false,
+    AutoNoThanks = false,
     AutoStartChaos = false
 }
 
@@ -808,18 +808,18 @@ local BattlePage = MakeTab("Battle", 3)
 local InfoPage = MakeTab("Info", 4)
 
 AddToggle(FarmPage, "Auto Open Eggs", "AutoOpenEggs", false)
-AddToggle(FarmPage, "Auto Grab Scraps", "AutoGrabScraps", true)
-AddToggle(FarmPage, "Auto Recycle Scrap", "AutoRecycleScrap", true)
-AddToggle(FarmPage, "Auto Upgrade Recycler", "AutoUpgradeRecycler", true)
+AddToggle(FarmPage, "Auto Grab Scraps", "AutoGrabScraps", false)
+AddToggle(FarmPage, "Auto Recycle Scrap", "AutoRecycleScrap", false)
+AddToggle(FarmPage, "Auto Upgrade Recycler", "AutoUpgradeRecycler", false)
 AddSlider(FarmPage, "Scrap Capacity", 50, 20, "ScrapCapacity")
 
-AddToggle(PlotPage, "Auto Rebirth (Master)", "AutoRebirth", true)
-AddToggle(PlotPage, "Auto Buy Feeders", "AutoBuyFeeders", true)
-AddToggle(PlotPage, "Auto Upgrade Feeder", "AutoUpgradeFeeder", true)
-AddToggle(PlotPage, "Auto Upgrade Coop", "AutoUpgradeCoop", true)
+AddToggle(PlotPage, "Auto Rebirth (Master)", "AutoRebirth", false)
+AddToggle(PlotPage, "Auto Buy Feeders", "AutoBuyFeeders", false)
+AddToggle(PlotPage, "Auto Upgrade Feeder", "AutoUpgradeFeeder", false)
+AddToggle(PlotPage, "Auto Upgrade Coop", "AutoUpgradeCoop", false)
 
-AddToggle(BattlePage, "Auto Start Tower", "AutoStartTower", true)
-AddToggle(BattlePage, "Auto No Thanks", "AutoNoThanks", true)
+AddToggle(BattlePage, "Auto Start Tower", "AutoStartTower", false)
+AddToggle(BattlePage, "Auto No Thanks", "AutoNoThanks", false)
 AddToggle(BattlePage, "Auto Start Chaos", "AutoStartChaos", false)
 
 local function AddInfo(k, v)
