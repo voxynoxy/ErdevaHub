@@ -313,14 +313,14 @@ task.spawn(function()
                     WalkTo(recyclerPos, 7.0, 2.5)
                     task.wait(1.2)
                     collectedScraps = 0
-                    BlacklistedScraps = {}
+                    table.clear(BlacklistedScraps)
                 else
                     local best, bestDist = nil, 9999
                     for _, obj in ipairs(workspace:GetDescendants()) do
                         if not IsRunning or not Flags.AutoGrabScraps then break end
                         if not BlacklistedScraps[obj] and IsGroundScrap(obj) then
                             local d = FlatDist(root.Position, obj.Position)
-                            if d < 350 and d < bestDist then
+                            if d < 400 and d < bestDist then
                                 bestDist = d
                                 best = obj
                             end
@@ -331,8 +331,8 @@ task.spawn(function()
                         BlacklistedScraps[best] = true
                         collectedScraps = collectedScraps + 1
                     else
-                        BlacklistedScraps = {}
-                        task.wait(0.2)
+                        table.clear(BlacklistedScraps)
+                        task.wait(0.25)
                     end
                 end
             end)
@@ -692,7 +692,7 @@ do
             lockBtn.BackgroundColor3 = Color3.fromRGB(20,120,20)
             task.delay(2, function()
                 if lockBtn and lockBtn.Parent then
-                    lockBtn.Text = "[LOCK] Set My Recycler Position"
+                    lockBtn.Text = "Set My Recycler Position"
                     lockBtn.BackgroundColor3 = Color3.fromRGB(180,30,30)
                 end
             end)
