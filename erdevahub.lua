@@ -1,3 +1,7 @@
+--[[
+    ERDEVA HUB - Mobile & PC Perfected UI
+]]
+
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -14,22 +18,21 @@ end)
 local Camera = workspace.CurrentCamera
 local Viewport = Camera.ViewportSize
 
-local isMobile = Viewport.X < 650
-local UI_W = isMobile and math.clamp(Viewport.X - 30, 320, 440) or 480
-local UI_H = isMobile and math.clamp(Viewport.Y - 40, 260, 310) or 320
+local UI_W = math.clamp(Viewport.X * 0.65, 340, 440)
+local UI_H = math.clamp(Viewport.Y * 0.75, 240, 280)
 
 local THEME = {
     Bg        = Color3.fromRGB(12, 12, 12),
     TopBar    = Color3.fromRGB(18, 18, 18),
     TabBar    = Color3.fromRGB(15, 15, 15),
-    TabActive = Color3.fromRGB(38, 12, 12),
-    Card      = Color3.fromRGB(18, 18, 18),
-    Border    = Color3.fromRGB(48, 48, 48),
-    Red       = Color3.fromRGB(220, 35, 35),
-    Text      = Color3.fromRGB(240, 240, 240),
-    Sub       = Color3.fromRGB(150, 150, 150),
+    TabActive = Color3.fromRGB(40, 14, 14),
+    Card      = Color3.fromRGB(20, 20, 20),
+    Border    = Color3.fromRGB(50, 50, 50),
+    Red       = Color3.fromRGB(225, 35, 35),
+    Text      = Color3.fromRGB(245, 245, 245),
+    Sub       = Color3.fromRGB(160, 160, 160),
     ToggleOff = Color3.fromRGB(55, 55, 55),
-    ToggleOn  = Color3.fromRGB(220, 35, 35)
+    ToggleOn  = Color3.fromRGB(225, 35, 35)
 }
 
 local function Tween(obj, props, dur)
@@ -44,12 +47,15 @@ ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.DisplayOrder = 9999
 ScreenGui.Parent = CoreGui
 
+-- Main Centered Container
 local Main = Instance.new("Frame")
 Main.Name = "MainWindow"
+Main.AnchorPoint = Vector2.new(0.5, 0.5)
 Main.Size = UDim2.fromOffset(UI_W, UI_H)
-Main.Position = UDim2.new(0.5, -UI_W / 2, 0.5, -UI_H / 2)
+Main.Position = UDim2.new(0.5, 0, 0.5, 0)
 Main.BackgroundColor3 = THEME.Bg
 Main.BorderSizePixel = 0
+Main.ClipsDescendants = true
 Main.Parent = ScreenGui
 
 local MainCorner = Instance.new("UICorner")
@@ -61,16 +67,13 @@ MainStroke.Color = THEME.Red
 MainStroke.Thickness = 1.2
 MainStroke.Parent = Main
 
+-- TopBar
 local TopBar = Instance.new("Frame")
 TopBar.Name = "TopBar"
 TopBar.Size = UDim2.new(1, 0, 0, 36)
 TopBar.BackgroundColor3 = THEME.TopBar
 TopBar.BorderSizePixel = 0
 TopBar.Parent = Main
-
-local TopCorner = Instance.new("UICorner")
-TopCorner.CornerRadius = UDim.new(0, 8)
-TopCorner.Parent = TopBar
 
 local TopLine = Instance.new("Frame")
 TopLine.Size = UDim2.new(1, 0, 0, 1)
@@ -91,7 +94,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -90, 1, 0)
 Title.Position = UDim2.fromOffset(20, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB  <font color='#dc2323' size='11'>v1.0</font>"
+Title.Text = "ERDEVA HUB  <font color='#e12323' size='11'>v1.0</font>"
 Title.RichText = true
 Title.TextColor3 = THEME.Text
 Title.TextSize = 13
@@ -103,7 +106,7 @@ local function CreateTopBtn(text, xOffset)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.fromOffset(24, 24)
     btn.Position = UDim2.new(1, xOffset, 0.5, -12)
-    btn.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     btn.BorderSizePixel = 0
     btn.Text = text
     btn.TextColor3 = THEME.Sub
@@ -133,9 +136,10 @@ MinBtn.MouseButton1Click:Connect(function()
     Tween(Main, {Size = UDim2.fromOffset(UI_W, isMinimized and 36 or UI_H)}, 0.15)
 end)
 
+-- Horizontal TabBar
 local TabBar = Instance.new("Frame")
 TabBar.Name = "TabBar"
-TabBar.Size = UDim2.new(1, 0, 0, 32)
+TabBar.Size = UDim2.new(1, 0, 0, 30)
 TabBar.Position = UDim2.fromOffset(0, 36)
 TabBar.BackgroundColor3 = THEME.TabBar
 TabBar.BorderSizePixel = 0
@@ -153,10 +157,11 @@ TabBarLayout.FillDirection = Enum.FillDirection.Horizontal
 TabBarLayout.SortOrder = Enum.SortOrder.LayoutOrder
 TabBarLayout.Parent = TabBar
 
+-- Scrollable Content Area
 local ContentArea = Instance.new("ScrollingFrame")
 ContentArea.Name = "ContentArea"
-ContentArea.Size = UDim2.new(1, 0, 1, -68)
-ContentArea.Position = UDim2.fromOffset(0, 68)
+ContentArea.Size = UDim2.new(1, 0, 1, -66)
+ContentArea.Position = UDim2.fromOffset(0, 66)
 ContentArea.BackgroundColor3 = THEME.Bg
 ContentArea.BorderSizePixel = 0
 ContentArea.ScrollBarThickness = 4
@@ -172,6 +177,7 @@ ContentPad.PaddingRight = UDim.new(0, 8)
 ContentPad.PaddingBottom = UDim.new(0, 10)
 ContentPad.Parent = ContentArea
 
+-- Tabs Logic
 local Tabs = {}
 local TabBtns = {}
 local currentTab = nil
@@ -222,7 +228,7 @@ for idx, name in ipairs(TAB_NAMES) do
     tabBtn.BorderSizePixel = 0
     tabBtn.Text = name
     tabBtn.TextColor3 = THEME.Sub
-    tabBtn.TextSize = 12
+    tabBtn.TextSize = 11
     tabBtn.Font = Enum.Font.GothamBold
     tabBtn.AutoButtonColor = false
     tabBtn.LayoutOrder = idx
@@ -247,7 +253,7 @@ for idx, name in ipairs(TAB_NAMES) do
     pageFrame.Parent = ContentArea
 
     local pageLayout = Instance.new("UIListLayout")
-    pageLayout.Padding = UDim.new(0, 8)
+    pageLayout.Padding = UDim.new(0, 6)
     pageLayout.FillDirection = Enum.FillDirection.Vertical
     pageLayout.SortOrder = Enum.SortOrder.LayoutOrder
     pageLayout.Parent = pageFrame
@@ -259,10 +265,11 @@ for idx, name in ipairs(TAB_NAMES) do
     end)
 end
 
+-- Card Factory
 local function CreateCard(tabName, title)
     local parentPage = Tabs[tabName]
     local card = Instance.new("Frame")
-    card.Size = UDim2.new(1, 0, 0, 28)
+    card.Size = UDim2.new(1, 0, 0, 26)
     card.BackgroundColor3 = THEME.Card
     card.BorderSizePixel = 0
     card.Parent = parentPage
@@ -327,8 +334,8 @@ local function CreateCard(tabName, title)
 
     function cardData:AddHeight(h)
         self.ContentHeight = self.ContentHeight + h
-        self.Container.Size = UDim2.new(1, 0, 0, self.ContentHeight + 10)
-        self.Card.Size = UDim2.new(1, 0, 0, self.ContentHeight + 36)
+        self.Container.Size = UDim2.new(1, 0, 0, self.ContentHeight + 6)
+        self.Card.Size = UDim2.new(1, 0, 0, self.ContentHeight + 34)
         RecalculateHeight(self.TabName)
     end
 
@@ -343,12 +350,12 @@ local function CreateToggle(cardData, labelText, defaultState, callback)
 
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, -45, 1, 0)
-    label.Position = UDim2.fromOffset(2, 0)
+    label.Position = UDim2.fromOffset(4, 0)
     label.BackgroundTransparency = 1
     label.Text = labelText
-    label.TextColor3 = THEME.Sub
+    label.TextColor3 = THEME.Text
     label.TextSize = 11
-    label.Font = Enum.Font.Gotham
+    label.Font = Enum.Font.GothamMedium
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = row
 
@@ -368,7 +375,7 @@ local function CreateToggle(cardData, labelText, defaultState, callback)
     local knob = Instance.new("Frame")
     knob.Size = UDim2.fromOffset(14, 14)
     knob.Position = UDim2.fromOffset(2, 2)
-    knob.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+    knob.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
     knob.BorderSizePixel = 0
     knob.Parent = toggleBtn
 
@@ -397,7 +404,7 @@ local function CreateToggle(cardData, labelText, defaultState, callback)
     end)
 
     if state then updateState() end
-    cardData:AddHeight(30)
+    cardData:AddHeight(28)
     return toggleBtn
 end
 
@@ -409,12 +416,12 @@ local function CreateSlider(cardData, labelText, minVal, maxVal, defaultVal, cal
 
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, -60, 0, 16)
-    label.Position = UDim2.fromOffset(2, 0)
+    label.Position = UDim2.fromOffset(4, 0)
     label.BackgroundTransparency = 1
     label.Text = labelText
-    label.TextColor3 = THEME.Sub
+    label.TextColor3 = THEME.Text
     label.TextSize = 11
-    label.Font = Enum.Font.Gotham
+    label.Font = Enum.Font.GothamMedium
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = wrapper
 
@@ -495,9 +502,10 @@ local function CreateSlider(cardData, labelText, minVal, maxVal, defaultVal, cal
         end
     end)
 
-    cardData:AddHeight(38)
+    cardData:AddHeight(36)
 end
 
+-- POPULATE FEATURES
 -- 1. FARM TAB
 local farmCard = CreateCard("Farm", "Auto Farm Features")
 CreateToggle(farmCard, "Auto Open Eggs", false)
@@ -530,16 +538,17 @@ local function AddInfoRow(k, v)
 
     local l1 = Instance.new("TextLabel")
     l1.Size = UDim2.new(0.5, 0, 1, 0)
+    l1.Position = UDim2.fromOffset(4, 0)
     l1.BackgroundTransparency = 1
     l1.Text = k
-    l1.TextColor3 = THEME.Sub
+    l1.TextColor3 = THEME.Text
     l1.TextSize = 11
-    l1.Font = Enum.Font.Gotham
+    l1.Font = Enum.Font.GothamMedium
     l1.TextXAlignment = Enum.TextXAlignment.Left
     l1.Parent = r
 
     local l2 = Instance.new("TextLabel")
-    l2.Size = UDim2.new(0.5, 0, 1, 0)
+    l2.Size = UDim2.new(0.5, -4, 1, 0)
     l2.Position = UDim2.new(0.5, 0, 0, 0)
     l2.BackgroundTransparency = 1
     l2.Text = v
@@ -549,7 +558,7 @@ local function AddInfoRow(k, v)
     l2.TextXAlignment = Enum.TextXAlignment.Right
     l2.Parent = r
 
-    infoCard:AddHeight(24)
+    infoCard:AddHeight(22)
 end
 
 AddInfoRow("Hub", "ERDEVA HUB")
