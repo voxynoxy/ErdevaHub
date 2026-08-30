@@ -140,7 +140,7 @@ local function TriggerPrompt(prompt)
     end)
 end
 
-local function FindFeederPads()
+local function FindSpecificPads(actionKeyword)
     local root = GetRoot()
     local results = {}
     for _, obj in ipairs(workspace:GetDescendants()) do
@@ -154,7 +154,7 @@ local function FindFeederPads()
             local pn = (obj.Parent and obj.Parent.Name:lower()) or ""
             local gn = (obj.Parent and obj.Parent.Parent and obj.Parent.Parent.Name:lower()) or ""
             local comb = act .. " " .. objT .. " " .. pn .. " " .. gn
-            if comb:find("feeder") or comb:find("feed") then
+            if comb:find(actionKeyword) then
                 matched = true
                 prompt = obj
                 part = obj.Parent
@@ -162,20 +162,13 @@ local function FindFeederPads()
         elseif obj:IsA("TextLabel") or obj:IsA("SurfaceGui") or obj:IsA("BillboardGui") then
             local text = (obj:IsA("TextLabel") and obj.Text:lower()) or ""
             local n = obj.Name:lower()
-            if text:find("buy feeder") or text:find("feeder") or n:find("buy feeder") or n:find("feeder") then
+            if text:find(actionKeyword) or n:find(actionKeyword) then
                 local pPart = obj:FindFirstAncestorWhichIsA("BasePart") or (obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent)
                 if pPart then
                     matched = true
                     part = pPart
                     prompt = pPart:FindFirstChildOfClass("ProximityPrompt") or pPart:FindFirstChildOfClass("ClickDetector")
                 end
-            end
-        elseif obj:IsA("BasePart") then
-            local n = obj.Name:lower()
-            if (n:find("feeder") or n:find("buyfeeder")) and not n:find("scrap") then
-                matched = true
-                part = obj
-                prompt = obj:FindFirstChildOfClass("ProximityPrompt") or obj:FindFirstChildOfClass("ClickDetector")
             end
         end
 
@@ -188,8 +181,12 @@ local function FindFeederPads()
     return results
 end
 
+local lastFeederActionTime = 0
 local function BuyFeederDirectly()
-    local pads = FindFeederPads()
+    if tick() - lastFeederActionTime < 3.0 then return false end
+    lastFeederActionTime = tick()
+
+    local pads = FindSpecificPads("buy feeder")
     if #pads == 0 then
         ClickGuiByPattern("buy feeder")
         TriggerRemote("buy feeder")
@@ -197,14 +194,11 @@ local function BuyFeederDirectly()
     end
 
     IsBusy = true
-    local root = GetRoot()
-    local savedPos = root and root.Position
-
     for _, item in ipairs(pads) do
         if not IsRunning then break end
         if item.part and item.part.Parent then
-            WalkTo(item.part.Position, 4.0, 3.0)
-            task.wait(0.2)
+            WalkTo(item.part.Position, 3.5, 3.0)
+            task.wait(0.15)
             if item.prompt then
                 if item.prompt:IsA("ProximityPrompt") then
                     TriggerPrompt(item.prompt)
@@ -214,12 +208,41 @@ local function BuyFeederDirectly()
             end
             ClickGuiByPattern("buy feeder")
             TriggerRemote("buy feeder")
-            task.wait(0.3)
+            task.wait(0.2)
         end
     end
+    IsBusy = false
+    return true
+end
 
-    if savedPos then
-        WalkTo(savedPos, 3.0, 3.5)
+local function UpgradeFeederDirectly()
+    if tick() - lastFeederActionTime < 3.0 then return false end
+    lastFeederActionTime = tick()
+
+    local pads = FindSpecificPads("upgrade feeder")
+    if #pads == 0 then
+        ClickGuiByPattern("upgrade feeder")
+        TriggerRemote("feeder")
+        return false
+    end
+
+    IsBusy = true
+    for _, item in ipairs(pads) do
+        if not IsRunning then break end
+        if item.part and item.part.Parent then
+            WalkTo(item.part.Position, 3.5, 3.0)
+            task.wait(0.15)
+            if item.prompt then
+                if item.prompt:IsA("ProximityPrompt") then
+                    TriggerPrompt(item.prompt)
+                elseif item.prompt:IsA("ClickDetector") and fireclickdetector then
+                    pcall(function() fireclickdetector(item.prompt) end)
+                end
+            end
+            ClickGuiByPattern("upgrade feeder")
+            TriggerRemote("feeder")
+            task.wait(0.2)
+        end
     end
     IsBusy = false
     return true
@@ -370,19 +393,21 @@ task.spawn(function()
         if Flags.AutoGrabScraps and not IsInBattle() and not IsBusy then
             pcall(function()
                 local root = GetRoot()
+                if not root then task.wait(0.2) return end
                 local cap         = tonumber(Flags.ScrapCapacity) or 20
                 local recyclerPos = GetRecyclerPos()
-
-                if (Flags.AutoBuyFeeders or Flags.AutoRebirth) and collectedScraps == 0 then
-                    BuyFeederDirectly()
-                end
 
                 if Flags.AutoRecycleScrap and recyclerPos and collectedScraps >= cap then
                     WalkTo(recyclerPos, 7.0, 2.5)
                     task.wait(1.2)
                     collectedScraps = 0
                     table.clear(BlacklistedScraps)
-                    BuyFeederDirectly()
+                    if Flags.AutoBuyFeeders or Flags.AutoRebirth then
+                        BuyFeederDirectly()
+                    end
+                    if Flags.AutoUpgradeFeeder then
+                        UpgradeFeederDirectly()
+                    end
                 else
                     local best, bestDist = nil, 9999
                     for _, obj in ipairs(workspace:GetDescendants()) do
@@ -469,8 +494,8 @@ task.spawn(function()
                         end
                     end
                     if confirm then
-                        WalkAndFireAll({"upgrade feeder","buy feeder"})
-                        ClickGuiByPattern("upgrade feeder") ClickGuiByPattern("buy feeder")
+                        UpgradeFeederDirectly()
+                        BuyFeederDirectly()
                         task.wait(0.3)
                         ClickGuiByPattern("confirm") ClickGuiByPattern("yes") ClickGuiByPattern("do rebirth") ClickGuiByPattern("claim rebirth")
                         task.wait(3.5)
@@ -525,12 +550,12 @@ task.spawn(function()
             pcall(function() ClickGuiByPattern("upgrade coop") TriggerRemote("coop") WalkAndFireAll({"coop","upgrade coop"}) end)
         end
         if Flags.AutoUpgradeFeeder and not IsInBattle() then
-            pcall(function() ClickGuiByPattern("upgrade feeder") TriggerRemote("feeder") WalkAndFireAll({"upgrade feeder","feeder upgrade","feeder"}) end)
+            pcall(function() UpgradeFeederDirectly() end)
         end
         if Flags.AutoBuyFeeders and not IsInBattle() then
             pcall(function() BuyFeederDirectly() end)
         end
-        task.wait(2.5)
+        task.wait(3.0)
     end
 end)
 
