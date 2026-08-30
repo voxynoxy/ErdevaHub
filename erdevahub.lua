@@ -95,16 +95,11 @@ local function GroundRunTo(targetPos, maxWait, stopDistance)
 end
 
 local mySavedPlot = nil
-local mySavedRecycler = nil
 local mySavedRecyclerPos = nil
 local mySavedArenaCenter = nil
 
-local function DetectBaseAndArena()
-    if mySavedRecyclerPos and mySavedArenaCenter then
-        return mySavedPlot, mySavedRecyclerPos, mySavedArenaCenter
-    end
-
-    local root = GetRoot()
+local function FindMyPlot()
+    if mySavedPlot and mySavedPlot.Parent then return mySavedPlot end
 
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("TextLabel") or obj:IsA("SurfaceGui") or obj:IsA("BillboardGui") then
@@ -113,35 +108,42 @@ local function DetectBaseAndArena()
                 local pModel = obj:FindFirstAncestorWhichIsA("Model") or obj:FindFirstAncestorWhichIsA("Folder")
                 if pModel and pModel ~= workspace then
                     mySavedPlot = pModel
-                    break
+                    return mySavedPlot
                 end
             end
         end
     end
 
-    if not mySavedPlot then
-        for _, folderName in ipairs({"Plots", "Farms", "Coops", "Islands"}) do
-            local f = workspace:FindFirstChild(folderName)
-            if f then
-                for _, p in ipairs(f:GetChildren()) do
-                    local owner = p:FindFirstChild("Owner") or p:FindFirstChild("Player") or p:FindFirstChild("UserId")
-                    if (owner and (tostring(owner.Value) == player.Name or tostring(owner.Value) == tostring(player.UserId))) or (p.Name == player.Name or p.Name:find(player.Name)) then
-                        mySavedPlot = p
-                        break
-                    end
+    for _, folderName in ipairs({"Plots", "Farms", "Coops", "Islands", "Tycoons"}) do
+        local f = workspace:FindFirstChild(folderName)
+        if f then
+            for _, p in ipairs(f:GetChildren()) do
+                local owner = p:FindFirstChild("Owner") or p:FindFirstChild("Player") or p:FindFirstChild("UserId")
+                if (owner and (tostring(owner.Value) == player.Name or tostring(owner.Value) == tostring(player.UserId))) or (p.Name == player.Name or p.Name:find(player.Name)) then
+                    mySavedPlot = p
+                    return mySavedPlot
                 end
             end
-            if mySavedPlot then break end
         end
     end
 
-    if mySavedPlot then
-        for _, child in ipairs(mySavedPlot:GetDescendants()) do
+    return nil
+end
+
+local function DetectBaseAndArena()
+    if mySavedRecyclerPos and mySavedArenaCenter then
+        return mySavedPlot, mySavedRecyclerPos, mySavedArenaCenter
+    end
+
+    local root = GetRoot()
+    local plot = FindMyPlot()
+
+    if plot then
+        for _, child in ipairs(plot:GetDescendants()) do
             local n = child.Name:lower()
             if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
                 local part = child:IsA("BasePart") and child or child:FindFirstChildWhichIsA("BasePart")
                 if part then
-                    mySavedRecycler = part
                     mySavedRecyclerPos = part.Position
                 end
             end
@@ -151,11 +153,22 @@ local function DetectBaseAndArena()
         end
     end
 
-    if not mySavedRecyclerPos and root then
-        local myInitialPos = root.Position
-        local bestRecycler = nil
-        local minD = 9999
+    if not mySavedArenaCenter and root then
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            local n = obj.Name:lower()
+            if (n:find("dirt") or n:find("coop") or n:find("arena") or n:find("circle") or n:find("floor")) and obj:IsA("BasePart") and obj.Size.X > 15 then
+                local d = (root.Position - obj.Position).Magnitude
+                if d < 120 then
+                    mySavedArenaCenter = obj.Position
+                    break
+                end
+            end
+        end
+    end
 
+    if not mySavedRecyclerPos and mySavedArenaCenter then
+        local bestDist = 9999
+        local bestPos = nil
         for _, obj in ipairs(workspace:GetDescendants()) do
             local n = obj.Name:lower()
             if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
@@ -171,21 +184,18 @@ local function DetectBaseAndArena()
                             end
                         end
                     end
-
                     if not isEnemy then
-                        local d = (myInitialPos - part.Position).Magnitude
-                        if d < minD then
-                            minD = d
-                            bestRecycler = part
+                        local dFromArena = (part.Position - mySavedArenaCenter).Magnitude
+                        if dFromArena < bestDist and dFromArena < 80 then
+                            bestDist = dFromArena
+                            bestPos = part.Position
                         end
                     end
                 end
             end
         end
-
-        if bestRecycler then
-            mySavedRecycler = bestRecycler
-            mySavedRecyclerPos = bestRecycler.Position
+        if bestPos then
+            mySavedRecyclerPos = bestPos
         end
     end
 
@@ -328,7 +338,7 @@ task.spawn(function()
                 local plot, recyclerPos, arenaCenter = DetectBaseAndArena()
 
                 if Flags.AutoRecycleScrap and recyclerPos and collectedScraps >= targetCapacity then
-                    GroundRunTo(recyclerPos, 4.5, 2.5)
+                    GroundRunTo(recyclerPos, 4.5, 2.0)
                     root.AssemblyLinearVelocity = Vector3.zero
                     task.wait(1.5)
                     collectedScraps = 0
@@ -341,7 +351,8 @@ task.spawn(function()
                         if not Flags.AutoGrabScraps or not IsRunning then break end
                         if not BlacklistedScraps[obj] and IsGroundScrap(obj) then
                             local dist = GetFlatDistance(root.Position, obj.Position)
-                            if dist < 300 and dist < minDistance then
+                            local distFromArena = arenaCenter and GetFlatDistance(obj.Position, arenaCenter) or dist
+                            if dist < 300 and distFromArena < 35 and dist < minDistance then
                                 minDistance = dist
                                 closestPart = obj
                             end
@@ -450,7 +461,6 @@ task.spawn(function()
 
                         task.wait(3.0)
                         mySavedPlot = nil
-                        mySavedRecycler = nil
                         mySavedRecyclerPos = nil
                         mySavedArenaCenter = nil
                         collectedScraps = 0
