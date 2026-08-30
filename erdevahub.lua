@@ -1,10 +1,12 @@
 --[[
-    ERDEVA HUB - 2D Flat Vector Navigation (Zero-Pause & Continuous Running)
-    - Fix: 2D Horizontal Distance (Eliminates the 3-stud Y-axis timeout pause!)
-    - Continuous Joystick Vector: Runs smoothly from scrap to scrap without stopping.
-    - Strict Capacity: Collects exact target count (e.g. 20) before heading to Recycler.
-    - Master Auto-Rebirth: 1-Click activates full AFK cycle.
-    - Character Noclip: Smooth fence traversal.
+    ERDEVA HUB - Rock-Solid Ground Physics & Knockback-Proof Harvester
+    - Ground Smooth Run (Feet on ground, continuous fluid velocity)
+    - Knockback Auto-Recovery (If hit/flung by chickens, immediately runs back into coop)
+    - Strict Target Lock (Never leaves coop before exact user target, e.g. 20, is reached)
+    - Clean Recycler Deposit (Deposits at own plot recycler and returns to coop)
+    - Master Auto-Rebirth: 1-Click activates full AFK cycle
+    - Character Noclip during farming so fences never block
+    - Clean Shutdown on GUI Close [X]
 ]]
 
 local Players = game:GetService("Players")
@@ -59,7 +61,7 @@ local Flags = {
 local ToggleUpdaters = {}
 
 --==================================================
--- NAVIGATION & FLAT 2D DISTANCE
+-- GROUND PHYSICS & NOCLIP ENGINE
 --==================================================
 
 local function GetChar()
@@ -76,7 +78,7 @@ local function GetHumanoid()
     return char and char:FindFirstChildOfClass("Humanoid")
 end
 
--- Active Noclip on Character so fences never block movement
+-- Active Noclip on Character during harvesting
 RunService.Stepped:Connect(function()
     if IsRunning and (Flags.AutoGrabScraps or Flags.AutoRecycleScrap) then
         local char = GetChar()
@@ -90,27 +92,34 @@ RunService.Stepped:Connect(function()
     end
 end)
 
--- 2D Flat Horizontal Distance (Ignores Character Height Y)
 local function GetFlatDistance(posA, posB)
     return Vector2.new(posA.X - posB.X, posA.Z - posB.Z).Magnitude
 end
 
--- Smooth, non-stopping movement to target
-local function MoveTowards(targetPos)
-    local hum = GetHumanoid()
+-- Smooth Ground Run (Keeps feet on ground, zero AI pauses)
+local function GroundRunTo(targetPos, maxWait, stopDistance)
+    if not IsRunning then return false end
     local root = GetRoot()
-    if not hum or not root then return false end
+    local hum = GetHumanoid()
+    if not root or not hum then return false end
 
-    local flatDist = GetFlatDistance(root.Position, targetPos)
-    if flatDist <= 2.5 then
-        return true -- Arrived instantly
+    local stopDist = stopDistance or 2.2
+    local start = tick()
+    local timeout = maxWait or 3.0
+
+    while IsRunning and GetFlatDistance(root.Position, targetPos) > stopDist and (tick() - start < timeout) do
+        local dir = Vector3.new(targetPos.X - root.Position.X, 0, targetPos.Z - root.Position.Z).Unit
+        -- Smooth natural ground velocity (22 studs/s)
+        root.AssemblyLinearVelocity = Vector3.new(dir.X * 22, root.AssemblyLinearVelocity.Y, dir.Z * 22)
+        root.CFrame = CFrame.new(root.Position, Vector3.new(targetPos.X, root.Position.Y, targetPos.Z))
+        hum:ChangeState(Enum.HumanoidStateType.Running)
+        task.wait(0.02)
     end
 
-    local dir = Vector3.new(targetPos.X - root.Position.X, 0, targetPos.Z - root.Position.Z).Unit
-    hum:Move(dir, false)
-    return false
+    return GetFlatDistance(root.Position, targetPos) <= (stopDist + 1.0)
 end
 
+-- Plot & Recycler Detection
 local myPlotCache = nil
 local function GetMyPlot()
     if myPlotCache and myPlotCache.Parent then return myPlotCache end
@@ -148,6 +157,18 @@ local function GetMyPlot()
     return nil
 end
 
+local function GetCoopCenter()
+    local plot = GetMyPlot()
+    if plot then
+        local floor = plot:FindFirstChild("Dirt") or plot:FindFirstChild("Floor") or plot:FindFirstChild("Ground") or plot:FindFirstChild("Coop")
+        if floor and floor:IsA("BasePart") then return floor.Position end
+        local p = plot:FindFirstChildWhichIsA("BasePart")
+        if p then return p.Position end
+    end
+    local root = GetRoot()
+    return root and root.Position or Vector3.zero
+end
+
 local function FindMyRecycler()
     local root = GetRoot()
     if not root then return nil, nil end
@@ -164,7 +185,7 @@ local function FindMyRecycler()
     end
 
     local closestPart, closestModel = nil, nil
-    local minD = 65
+    local minD = 75
     for _, obj in ipairs(workspace:GetDescendants()) do
         local n = obj.Name:lower()
         if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("sell") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
@@ -236,10 +257,12 @@ local function IsInBattle()
     return false
 end
 
--- Validate ground scrap
+-- Validate ONLY uncollected ground scraps
 local function IsGroundScrap(obj)
     if not obj:IsA("BasePart") or not obj.Parent then return false end
-    if obj:FindFirstAncestorOfClass("Model") and obj:FindFirstAncestorOfClass("Model"):FindFirstChildOfClass("Humanoid") then
+    -- Exclude if part of ANY player character
+    local ancestorModel = obj:FindFirstAncestorOfClass("Model")
+    if ancestorModel and ancestorModel:FindFirstChildOfClass("Humanoid") then
         return false
     end
     local n = obj.Name:lower()
@@ -251,10 +274,11 @@ local function IsGroundScrap(obj)
 end
 
 --==================================================
--- 1. CONTINUOUS NON-STOP HARVESTING LOOP
+-- 1. STRICT TARGET & KNOCKBACK-PROOF HARVESTER
 --==================================================
 
 local collectedCount = 0
+local ProcessedScraps = {}
 
 task.spawn(function()
     while IsRunning do
@@ -265,29 +289,34 @@ task.spawn(function()
                 if not root or not hum then task.wait(0.1) return end
 
                 local targetCapacity = Flags.ScrapCapacity or Flags.RecycleThreshold or 20
+                local coopCenter = GetCoopCenter()
 
-                -- 1. If capacity is met: Walk to Recycler, deposit, reset
+                -- KNOCKBACK CHECK: If thrown out of coop while farming, run straight back inside!
+                if collectedCount < targetCapacity and GetFlatDistance(root.Position, coopCenter) > 40 then
+                    GroundRunTo(coopCenter, 2.5, 5.0)
+                end
+
+                -- STRICT CAPACITY: ONLY go to Recycler when target capacity is 100% reached!
                 if Flags.AutoRecycleScrap and collectedCount >= targetCapacity then
                     local recPart, recModel = FindMyRecycler()
                     if recPart then
-                        local start = tick()
-                        while IsRunning and GetFlatDistance(root.Position, recPart.Position) > 2.8 and (tick() - start < 4.0) do
-                            MoveTowards(recPart.Position)
-                            task.wait(0.03)
-                        end
-                        hum:Move(Vector3.zero, false)
-                        task.wait(1.5) -- Deposit pause
+                        GroundRunTo(recPart.Position, 3.5, 2.5)
+                        root.AssemblyLinearVelocity = Vector3.zero
+                        task.wait(1.5) -- Deposit into recycler
                         collectedCount = 0
+                        ProcessedScraps = {}
+                        -- Immediately run back into the coop
+                        GroundRunTo(coopCenter, 3.0, 5.0)
                     end
                 end
 
-                -- 2. Find closest ground scrap using 2D distance
+                -- Find closest ground scrap
                 local closestPart = nil
                 local minDistance = 9999
 
                 for _, obj in ipairs(workspace:GetDescendants()) do
                     if not Flags.AutoGrabScraps or not IsRunning then break end
-                    if IsGroundScrap(obj) then
+                    if not ProcessedScraps[obj] and IsGroundScrap(obj) then
                         local dist = GetFlatDistance(root.Position, obj.Position)
                         if dist < 85 and dist < minDistance then
                             minDistance = dist
@@ -296,18 +325,23 @@ task.spawn(function()
                     end
                 end
 
-                -- 3. Run continuously to target scrap
+                -- Run directly over scrap (Zero timeout pause)
                 if closestPart and collectedCount < targetCapacity then
-                    local start = tick()
-                    while IsRunning and closestPart.Parent and GetFlatDistance(root.Position, closestPart.Position) > 2.5 and (tick() - start < 2.0) do
-                        MoveTowards(closestPart.Position)
-                        task.wait(0.03)
-                    end
+                    GroundRunTo(closestPart.Position, 1.6, 2.2)
+                    ProcessedScraps[closestPart] = true
                     collectedCount = collectedCount + 1
-                    -- Immediately chains to next scrap with 0ms wait!
+                    -- Immediately chains to next ground scrap!
                 else
-                    hum:Move(Vector3.zero, false)
-                    task.wait(0.05)
+                    -- No scraps on floor yet: Stay in center of coop waiting for chickens to drop more
+                    if collectedCount < targetCapacity then
+                        if GetFlatDistance(root.Position, coopCenter) > 15 then
+                            GroundRunTo(coopCenter, 1.5, 4.0)
+                        else
+                            root.AssemblyLinearVelocity = Vector3.zero
+                        end
+                    end
+                    ProcessedScraps = {}
+                    task.wait(0.1)
                 end
             end)
         else
@@ -517,7 +551,7 @@ local function Shutdown()
     local root = GetRoot()
     local hum = GetHumanoid()
     if hum and root then
-        hum:Move(Vector3.zero, false)
+        root.AssemblyLinearVelocity = Vector3.zero
     end
     if Gui then
         Gui:Destroy()
@@ -856,4 +890,4 @@ AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
 SetTab("Farm")
-print("[ERDEVA HUB] 2D Flat Vector Navigation Active.")
+print("[ERDEVA HUB] Ground Physics & Knockback-Proof Harvester Ready.")
