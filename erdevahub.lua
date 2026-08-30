@@ -1,9 +1,11 @@
 --[[
-    ERDEVA HUB - Rock-Solid Ground Physics & Knockback-Proof Harvester
-    - Ground Smooth Run (Feet on ground, continuous fluid velocity)
-    - Knockback Auto-Recovery (If hit/flung by chickens, immediately runs back into coop)
-    - Strict Target Lock (Never leaves coop before exact user target, e.g. 20, is reached)
-    - Clean Recycler Deposit (Deposits at own plot recycler and returns to coop)
+    ERDEVA HUB - Base-Locked Recycler & Rock-Solid Progression
+    - Strict Own-Base Locking:
+      * Permanently locks Recycler to YOUR own plot (verified by player name / coop proximity)
+      * NEVER walks to other players' recyclers!
+    - Ground Smooth Run (Natural velocity, 100% kick-proof)
+    - Knockback Auto-Recovery (If hit/flung by chickens, returns straight to own coop)
+    - Strict Target Lock (Collects exact user target, e.g. 20, before depositing)
     - Master Auto-Rebirth: 1-Click activates full AFK cycle
     - Character Noclip during farming so fences never block
     - Clean Shutdown on GUI Close [X]
@@ -109,7 +111,6 @@ local function GroundRunTo(targetPos, maxWait, stopDistance)
 
     while IsRunning and GetFlatDistance(root.Position, targetPos) > stopDist and (tick() - start < timeout) do
         local dir = Vector3.new(targetPos.X - root.Position.X, 0, targetPos.Z - root.Position.Z).Unit
-        -- Smooth natural ground velocity (22 studs/s)
         root.AssemblyLinearVelocity = Vector3.new(dir.X * 22, root.AssemblyLinearVelocity.Y, dir.Z * 22)
         root.CFrame = CFrame.new(root.Position, Vector3.new(targetPos.X, root.Position.Y, targetPos.Z))
         hum:ChangeState(Enum.HumanoidStateType.Running)
@@ -119,89 +120,94 @@ local function GroundRunTo(targetPos, maxWait, stopDistance)
     return GetFlatDistance(root.Position, targetPos) <= (stopDist + 1.0)
 end
 
--- Plot & Recycler Detection
-local myPlotCache = nil
-local function GetMyPlot()
-    if myPlotCache and myPlotCache.Parent then return myPlotCache end
+--==================================================
+-- STRICT BASE-LOCKING (OWN RECYCLER ONLY)
+--==================================================
 
+local myCachedRecycler = nil
+local myCachedCoopCenter = nil
+local myPlotCache = nil
+
+local function FindMyOwnBaseAndRecycler()
+    if myCachedRecycler and myCachedRecycler.Parent and myCachedCoopCenter then
+        return myCachedRecycler, myCachedCoopCenter
+    end
+
+    local root = GetRoot()
+
+    -- 1. Search for sign with player's exact Name or DisplayName
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("TextLabel") or obj:IsA("SurfaceGui") or obj:IsA("BillboardGui") then
+            local text = (obj:IsA("TextLabel") and obj.Text or "")
+            if (text:find(player.Name) or text:find(player.DisplayName)) and not text:find("Level") and not text:find("Health") then
+                local plotModel = obj:FindFirstAncestorWhichIsA("Model") or obj:FindFirstAncestorWhichIsA("Folder")
+                if plotModel and plotModel ~= workspace then
+                    for _, child in ipairs(plotModel:GetDescendants()) do
+                        local n = child.Name:lower()
+                        if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
+                            local part = child:IsA("BasePart") and child or child:FindFirstChildWhichIsA("BasePart")
+                            if part then
+                                myCachedRecycler = part
+                                myPlotCache = plotModel
+                                myCachedCoopCenter = root and root.Position or part.Position
+                                return myCachedRecycler, myCachedCoopCenter
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- 2. Search in workspace.Plots / Farms folders for plot owned by player
     for _, folderName in ipairs({"Plots", "Farms", "Coops", "Islands"}) do
         local f = workspace:FindFirstChild(folderName)
         if f then
             for _, p in ipairs(f:GetChildren()) do
-                local owner = p:FindFirstChild("Owner") or p:FindFirstChild("Player")
-                if owner and (tostring(owner.Value) == player.Name or tostring(owner.Value) == tostring(player.UserId)) then
-                    myPlotCache = p
-                    return p
-                end
-                if p.Name == player.Name or p.Name:find(player.Name) then
-                    myPlotCache = p
-                    return p
+                local owner = p:FindFirstChild("Owner") or p:FindFirstChild("Player") or p:FindFirstChild("UserId")
+                if (owner and (tostring(owner.Value) == player.Name or tostring(owner.Value) == tostring(player.UserId))) or (p.Name == player.Name or p.Name:find(player.Name)) then
+                    for _, child in ipairs(p:GetDescendants()) do
+                        local n = child.Name:lower()
+                        if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
+                            local part = child:IsA("BasePart") and child or child:FindFirstChildWhichIsA("BasePart")
+                            if part then
+                                myCachedRecycler = part
+                                myPlotCache = p
+                                myCachedCoopCenter = root and root.Position or part.Position
+                                return myCachedRecycler, myCachedCoopCenter
+                            end
+                        end
+                    end
                 end
             end
         end
     end
 
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("TextLabel") and (obj.Text:find(player.Name) or obj.Text:find(player.DisplayName)) then
-            local model = obj:FindFirstAncestorWhichIsA("Model")
-            if model and model.Parent ~= workspace then
-                myPlotCache = model.Parent
-                return model.Parent
-            elseif model then
-                myPlotCache = model
-                return model
-            end
-        end
-    end
-
-    return nil
-end
-
-local function GetCoopCenter()
-    local plot = GetMyPlot()
-    if plot then
-        local floor = plot:FindFirstChild("Dirt") or plot:FindFirstChild("Floor") or plot:FindFirstChild("Ground") or plot:FindFirstChild("Coop")
-        if floor and floor:IsA("BasePart") then return floor.Position end
-        local p = plot:FindFirstChildWhichIsA("BasePart")
-        if p then return p.Position end
-    end
-    local root = GetRoot()
-    return root and root.Position or Vector3.zero
-end
-
-local function FindMyRecycler()
-    local root = GetRoot()
-    if not root then return nil, nil end
-
-    local plot = GetMyPlot()
-    if plot then
-        for _, obj in ipairs(plot:GetDescendants()) do
+    -- 3. Lock to closest recycler within strict 35-stud radius of player's initial position
+    if root and not myCachedRecycler then
+        local closest = nil
+        local minD = 38
+        for _, obj in ipairs(workspace:GetDescendants()) do
             local n = obj.Name:lower()
-            if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("sell") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
+            if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
                 local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
-                if part then return part, obj end
-            end
-        end
-    end
-
-    local closestPart, closestModel = nil, nil
-    local minD = 75
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        local n = obj.Name:lower()
-        if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("sell") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
-            local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
-            if part then
-                local d = (root.Position - part.Position).Magnitude
-                if d < minD then
-                    minD = d
-                    closestPart = part
-                    closestModel = obj
+                if part then
+                    local d = (root.Position - part.Position).Magnitude
+                    if d < minD then
+                        minD = d
+                        closest = part
+                    end
                 end
             end
         end
+        if closest then
+            myCachedRecycler = closest
+            myCachedCoopCenter = root.Position
+            return closest, myCachedCoopCenter
+        end
     end
 
-    return closestPart, closestModel
+    return myCachedRecycler, (myCachedCoopCenter or (root and root.Position or Vector3.zero))
 end
 
 local function ClickButton(btn)
@@ -274,7 +280,7 @@ local function IsGroundScrap(obj)
 end
 
 --==================================================
--- 1. STRICT TARGET & KNOCKBACK-PROOF HARVESTER
+-- 1. BASE-LOCKED HARVEST & RECYCLER ENGINE
 --==================================================
 
 local collectedCount = 0
@@ -289,28 +295,30 @@ task.spawn(function()
                 if not root or not hum then task.wait(0.1) return end
 
                 local targetCapacity = Flags.ScrapCapacity or Flags.RecycleThreshold or 20
-                local coopCenter = GetCoopCenter()
+                local myRecycler, myCoopCenter = FindMyOwnBaseAndRecycler()
 
-                -- KNOCKBACK CHECK: If thrown out of coop while farming, run straight back inside!
-                if collectedCount < targetCapacity and GetFlatDistance(root.Position, coopCenter) > 40 then
-                    GroundRunTo(coopCenter, 2.5, 5.0)
+                -- KNOCKBACK CHECK: If flung outside own coop while farming, run straight back into own coop!
+                if myCoopCenter and collectedCount < targetCapacity and GetFlatDistance(root.Position, myCoopCenter) > 36 then
+                    GroundRunTo(myCoopCenter, 2.5, 4.0)
                 end
 
-                -- STRICT CAPACITY: ONLY go to Recycler when target capacity is 100% reached!
+                -- STRICT CAPACITY: ONLY go to YOUR OWN Recycler when target is 100% reached!
                 if Flags.AutoRecycleScrap and collectedCount >= targetCapacity then
-                    local recPart, recModel = FindMyRecycler()
-                    if recPart then
-                        GroundRunTo(recPart.Position, 3.5, 2.5)
+                    if myRecycler then
+                        -- Run strictly to OWN Recycler
+                        GroundRunTo(myRecycler.Position, 3.5, 2.5)
                         root.AssemblyLinearVelocity = Vector3.zero
-                        task.wait(1.5) -- Deposit into recycler
+                        task.wait(1.5) -- Deposit into own recycler
                         collectedCount = 0
                         ProcessedScraps = {}
-                        -- Immediately run back into the coop
-                        GroundRunTo(coopCenter, 3.0, 5.0)
+                        -- Immediately run back into OWN coop
+                        if myCoopCenter then
+                            GroundRunTo(myCoopCenter, 3.0, 4.0)
+                        end
                     end
                 end
 
-                -- Find closest ground scrap
+                -- Find closest ground scrap near own coop
                 local closestPart = nil
                 local minDistance = 9999
 
@@ -318,7 +326,9 @@ task.spawn(function()
                     if not Flags.AutoGrabScraps or not IsRunning then break end
                     if not ProcessedScraps[obj] and IsGroundScrap(obj) then
                         local dist = GetFlatDistance(root.Position, obj.Position)
-                        if dist < 85 and dist < minDistance then
+                        -- Must be within 55 studs of own coop (prevents stealing from far away players)
+                        local distFromCoop = myCoopCenter and GetFlatDistance(obj.Position, myCoopCenter) or dist
+                        if dist < 65 and distFromCoop < 38 and dist < minDistance then
                             minDistance = dist
                             closestPart = obj
                         end
@@ -330,12 +340,11 @@ task.spawn(function()
                     GroundRunTo(closestPart.Position, 1.6, 2.2)
                     ProcessedScraps[closestPart] = true
                     collectedCount = collectedCount + 1
-                    -- Immediately chains to next ground scrap!
                 else
-                    -- No scraps on floor yet: Stay in center of coop waiting for chickens to drop more
-                    if collectedCount < targetCapacity then
-                        if GetFlatDistance(root.Position, coopCenter) > 15 then
-                            GroundRunTo(coopCenter, 1.5, 4.0)
+                    -- No scraps on floor yet: Stay in center of own coop waiting for chickens to drop more
+                    if myCoopCenter and collectedCount < targetCapacity then
+                        if GetFlatDistance(root.Position, myCoopCenter) > 12 then
+                            GroundRunTo(myCoopCenter, 1.5, 3.0)
                         else
                             root.AssemblyLinearVelocity = Vector3.zero
                         end
@@ -445,6 +454,8 @@ task.spawn(function()
                         ClickGuiByPattern("claim rebirth")
 
                         task.wait(3.0)
+                        myCachedRecycler = nil
+                        myCachedCoopCenter = nil
                         myPlotCache = nil
                         collectedCount = 0
                         isTowerBusy = false
@@ -890,4 +901,4 @@ AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
 SetTab("Farm")
-print("[ERDEVA HUB] Ground Physics & Knockback-Proof Harvester Ready.")
+print("[ERDEVA HUB] Base-Locked Recycler Ready.")
