@@ -14,7 +14,6 @@ pcall(function()
 end)
 
 local IsRunning = true
-
 local W, H = 420, 250
 local C = {
     Bg = Color3.fromRGB(14, 14, 14),
@@ -47,15 +46,11 @@ local Flags = {
 
 local ToggleUpdaters = {}
 
-local function GetChar()
-    return player.Character
-end
-
+local function GetChar() return player.Character end
 local function GetRoot()
     local char = GetChar()
     return char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso"))
 end
-
 local function GetHumanoid()
     local char = GetChar()
     return char and char:FindFirstChildOfClass("Humanoid")
@@ -96,7 +91,6 @@ local function GroundRunTo(targetPos, maxWait, stopDistance)
         hum:ChangeState(Enum.HumanoidStateType.Running)
         task.wait(0.02)
     end
-
     return GetFlatDistance(root.Position, targetPos) <= (stopDist + 1.0)
 end
 
@@ -140,36 +134,45 @@ local function DetectBaseAndArena()
         end
     end
 
-    local searchScope = mySavedPlot or workspace
-
-    for _, child in ipairs(searchScope:GetDescendants()) do
-        local n = child.Name:lower()
-        if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
-            local part = child:IsA("BasePart") and child or child:FindFirstChildWhichIsA("BasePart")
-            if part then mySavedRecycler = part end
-        end
-        if (n:find("dirt") or n:find("coop") or n:find("arena") or n:find("circle") or n:find("floor")) and child:IsA("BasePart") and child.Size.X > 15 then
-            mySavedArenaCenter = child.Position
+    if mySavedPlot then
+        for _, child in ipairs(mySavedPlot:GetDescendants()) do
+            local n = child.Name:lower()
+            if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
+                local part = child:IsA("BasePart") and child or child:FindFirstChildWhichIsA("BasePart")
+                if part then mySavedRecycler = part end
+            end
+            if (n:find("dirt") or n:find("coop") or n:find("arena") or n:find("circle") or n:find("floor")) and child:IsA("BasePart") and child.Size.X > 15 then
+                mySavedArenaCenter = child.Position
+            end
         end
     end
 
     if not mySavedRecycler and root then
-        local closest = nil
-        local minD = 120
+        local candidates = {}
         for _, obj in ipairs(workspace:GetDescendants()) do
             local n = obj.Name:lower()
             if (n:find("recycler") or n:find("deposit") or n:find("trashbin") or n:find("recycle")) and not n:find("upgrade") and not n:find("shop") and not n:find("button") then
                 local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
                 if part then
-                    local d = (root.Position - part.Position).Magnitude
-                    if d < minD then
-                        minD = d
-                        closest = part
+                    local pModel = part:FindFirstAncestorWhichIsA("Model") or part:FindFirstAncestorWhichIsA("Folder")
+                    local isOtherPlayer = false
+                    if pModel then
+                        for _, otherP in ipairs(Players:GetPlayers()) do
+                            if otherP ~= player and (pModel.Name:find(otherP.Name) or (pModel:FindFirstChild("Owner") and tostring(pModel.Owner.Value) == otherP.Name)) then
+                                isOtherPlayer = true
+                                break
+                            end
+                        end
+                    end
+                    if not isOtherPlayer then
+                        local d = (root.Position - part.Position).Magnitude
+                        table.insert(candidates, {part = part, dist = d})
                     end
                 end
             end
         end
-        mySavedRecycler = closest
+        table.sort(candidates, function(a, b) return a.dist < b.dist end)
+        if candidates[1] then mySavedRecycler = candidates[1].part end
     end
 
     return mySavedPlot, mySavedRecycler, mySavedArenaCenter
@@ -208,8 +211,9 @@ local function ClickGuiByPattern(pattern)
 end
 
 local function Trigger3DUpgrade(pattern)
+    local plot = mySavedPlot or workspace
     pattern = pattern:lower()
-    for _, obj in ipairs(workspace:GetDescendants()) do
+    for _, obj in ipairs(plot:GetDescendants()) do
         local matches = false
         local n = obj.Name:lower()
         if n:find(pattern) then matches = true end
@@ -359,25 +363,19 @@ task.spawn(function()
                 if not IsInBattle() then
                     isTowerBusy = true
                     ClickGuiByPattern("tower")
-
                     task.wait(2.5)
                     local elapsed = 0
                     while elapsed < 90 and IsRunning and Flags.AutoStartTower do
                         task.wait(1)
                         elapsed = elapsed + 1
-
                         ClickGuiByPattern("claim")
                         ClickGuiByPattern("next floor")
                         ClickGuiByPattern("victory")
                         ClickGuiByPattern("no thanks")
                         ClickGuiByPattern("nothanks")
                         ClickGuiByPattern("continue")
-
-                        if not IsInBattle() and elapsed > 5 then
-                            break
-                        end
+                        if not IsInBattle() and elapsed > 5 then break end
                     end
-
                     task.wait(1.5)
                     isTowerBusy = false
                 end
@@ -395,7 +393,6 @@ task.spawn(function()
                 if not pGui then return end
 
                 local rebirthAvailable = false
-
                 for _, b in ipairs(pGui:GetDescendants()) do
                     if (b:IsA("TextButton") or b:IsA("ImageButton")) and b.Visible then
                         local n = b.Name:lower() .. " " .. (b:IsA("TextButton") and b.Text:lower() or "")
@@ -537,17 +534,11 @@ Gui.DisplayOrder = 9999
 
 local function Shutdown()
     IsRunning = false
-    for k in pairs(Flags) do
-        Flags[k] = false
-    end
+    for k in pairs(Flags) do Flags[k] = false end
     local root = GetRoot()
     local hum = GetHumanoid()
-    if hum and root then
-        root.AssemblyLinearVelocity = Vector3.zero
-    end
-    if Gui then
-        Gui:Destroy()
-    end
+    if hum and root then root.AssemblyLinearVelocity = Vector3.zero end
+    if Gui then Gui:Destroy() end
 end
 
 local Main = Instance.new("Frame", Gui)
@@ -613,14 +604,11 @@ local function SetupDrag(frame)
             dStart = i.Position
             fStart = Main.Position
             i.Changed:Connect(function()
-                if i.UserInputState == Enum.UserInputState.End then
-                    drag = false
-                end
+                if i.UserInputState == Enum.UserInputState.End then drag = false end
             end)
         end
     end)
 end
-
 SetupDrag(Top)
 
 UserInputService.InputChanged:Connect(function(i)
@@ -628,14 +616,11 @@ UserInputService.InputChanged:Connect(function(i)
         local d = i.Position - dStart
         local cam = workspace.CurrentCamera
         local vSize = cam and cam.ViewportSize or Vector2.new(1920, 1080)
-
         local curH = minState and 34 or H
         local targetX = fStart.X.Offset + d.X
         local targetY = fStart.Y.Offset + d.Y
-
         local clampedX = math.clamp(targetX, -vSize.X/2 + W/2 + 10, vSize.X/2 - W/2 - 10)
         local clampedY = math.clamp(targetY, -vSize.Y/2 + curH/2 + 25, vSize.Y/2 - curH/2 - 10)
-
         Main.Position = UDim2.new(0.5, clampedX, 0.5, clampedY)
     end
 end)
