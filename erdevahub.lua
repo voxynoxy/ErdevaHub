@@ -45,33 +45,38 @@ local Flags = {
 }
 
 --==================================================
--- POWERFUL GAME ACTION ENGINE
+-- GAME UTILITIES & KNIT ENGINE
 --==================================================
-
-local function GetCharacter()
-    return player.Character or player.CharacterAdded:Wait()
-end
 
 local function GetRoot()
     local char = player.Character
     return char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso"))
 end
 
-local function ClickGuiButton(pattern)
+local function ClickButton(btn)
+    if not btn then return end
+    pcall(function()
+        if getconnections then
+            for _, c in ipairs(getconnections(btn.MouseButton1Click)) do c:Fire() end
+            for _, c in ipairs(getconnections(btn.MouseButton1Down)) do c:Fire() end
+            for _, c in ipairs(getconnections(btn.Activated)) do c:Fire() end
+        end
+        if firesignal then
+            firesignal(btn.MouseButton1Click)
+            firesignal(btn.Activated)
+        end
+    end)
+end
+
+local function ClickGuiByPattern(pattern)
     local pGui = player:FindFirstChild("PlayerGui")
     if not pGui then return false end
     pattern = pattern:lower()
     for _, b in ipairs(pGui:GetDescendants()) do
         if (b:IsA("TextButton") or b:IsA("ImageButton")) and b.Visible then
-            local t = b.Name:lower() .. " " .. (b:IsA("TextButton") and b.Text:lower() or "")
-            if t:find(pattern) then
-                if getconnections then
-                    for _, c in ipairs(getconnections(b.MouseButton1Click)) do c:Fire() end
-                    for _, c in ipairs(getconnections(b.Activated)) do c:Fire() end
-                end
-                pcall(function()
-                    firesignal(b.MouseButton1Click)
-                end)
+            local text = (b:IsA("TextButton") and b.Text:lower() or "") .. " " .. b.Name:lower()
+            if text:find(pattern) then
+                ClickButton(b)
                 return true
             end
         end
@@ -79,20 +84,42 @@ local function ClickGuiButton(pattern)
     return false
 end
 
-local function FireAllRemotes(keywords, ...)
+local function CallRemotes(keywords, ...)
     local args = {...}
-    for _, desc in ipairs(ReplicatedStorage:GetDescendants()) do
-        if desc:IsA("RemoteEvent") or desc:IsA("RemoteFunction") then
-            local n = desc.Name:lower()
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+            local name = obj.Name:lower()
             for _, k in ipairs(keywords) do
-                if n:find(k:lower()) then
+                if name:find(k:lower()) then
                     pcall(function()
-                        if desc:IsA("RemoteEvent") then
-                            desc:FireServer(unpack(args))
+                        if obj:IsA("RemoteEvent") then
+                            obj:FireServer(unpack(args))
                         else
-                            desc:InvokeServer(unpack(args))
+                            obj:InvokeServer(unpack(args))
                         end
                     end)
+                end
+            end
+        end
+    end
+end
+
+local function TouchPads(keywords)
+    local root = GetRoot()
+    if not root then return end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            local name = obj.Name:lower() .. " " .. (obj.Parent and obj.Parent.Name:lower() or "")
+            for _, k in ipairs(keywords) do
+                if name:find(k:lower()) then
+                    if firetouchinterest then
+                        firetouchinterest(root, obj, 0)
+                        firetouchinterest(root, obj, 1)
+                    end
+                    local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+                    if prompt and fireproximityprompt then
+                        fireproximityprompt(prompt)
+                    end
                 end
             end
         end
@@ -105,45 +132,45 @@ task.spawn(function()
         if Flags.AutoGrabScraps then
             pcall(function()
                 local root = GetRoot()
-                for _, obj in ipairs(workspace:GetDescendants()) do
-                    if not Flags.AutoGrabScraps then break end
-                    local n = obj.Name:lower()
-                    if (n:find("scrap") or n:find("trash") or n:find("drop")) and (obj:IsA("BasePart") or obj:IsA("Model")) then
-                        local targetPart = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
-                        if targetPart then
-                            local p = targetPart:FindFirstChildWhichIsA("ProximityPrompt") or (obj:FindFirstChildWhichIsA("ProximityPrompt"))
-                            if p and fireproximityprompt then
-                                fireproximityprompt(p)
-                            end
-                            if root and firetouchinterest then
-                                firetouchinterest(root, targetPart, 0)
-                                firetouchinterest(root, targetPart, 1)
-                            end
-                            if root and (root.Position - targetPart.Position).Magnitude < 80 then
-                                local oldCF = root.CFrame
-                                root.CFrame = targetPart.CFrame
-                                task.wait(0.05)
-                                root.CFrame = oldCF
+                if root then
+                    for _, obj in ipairs(workspace:GetDescendants()) do
+                        if not Flags.AutoGrabScraps then break end
+                        local n = obj.Name:lower()
+                        if n:find("scrap") or n:find("trash") or n:find("drop") or n:find("debris") then
+                            local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
+                            if part then
+                                if not part.Anchored then
+                                    part.CFrame = root.CFrame
+                                end
+                                if firetouchinterest then
+                                    firetouchinterest(root, part, 0)
+                                    firetouchinterest(root, part, 1)
+                                end
+                                local p = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+                                if p and fireproximityprompt then
+                                    fireproximityprompt(p)
+                                end
                             end
                         end
                     end
                 end
-                FireAllRemotes({"grabscrap", "collectscrap", "pickupscrap", "scrap", "farm"})
+                CallRemotes({"scrap", "collect", "grab", "pickup"})
             end)
         end
-        task.wait(0.2)
+        task.wait(0.15)
     end
 end)
 
--- 2. AUTO OPEN EGGS / INCUBATOR
+-- 2. AUTO OPEN EGGS
 task.spawn(function()
     while true do
         if Flags.AutoOpenEggs then
             pcall(function()
-                FireAllRemotes({"egg", "hatch", "openegg", "incubator", "buyegg"})
-                ClickGuiButton("hatch")
-                ClickGuiButton("open")
-                ClickGuiButton("egg")
+                CallRemotes({"egg", "hatch", "openegg", "incubator", "buyegg", "startegg"})
+                TouchPads({"egg", "hatch", "incubator"})
+                ClickGuiByPattern("hatch")
+                ClickGuiByPattern("open")
+                ClickGuiByPattern("egg")
             end)
         end
         task.wait(0.5)
@@ -155,9 +182,10 @@ task.spawn(function()
     while true do
         if Flags.AutoFuseChickens then
             pcall(function()
-                FireAllRemotes({"fuse", "merge", "autofuse", "chicken"})
-                ClickGuiButton("fuse")
-                ClickGuiButton("merge")
+                CallRemotes({"fuse", "merge", "chicken", "autofuse"})
+                TouchPads({"fuse", "merge"})
+                ClickGuiByPattern("fuse")
+                ClickGuiByPattern("merge")
             end)
         end
         task.wait(0.8)
@@ -169,20 +197,9 @@ task.spawn(function()
     while true do
         if Flags.AutoRecycleScrap then
             pcall(function()
-                local root = GetRoot()
-                for _, obj in ipairs(workspace:GetDescendants()) do
-                    if obj.Name:lower():find("recycler") or obj.Name:lower():find("recycle") then
-                        local target = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
-                        if target and root and firetouchinterest then
-                            firetouchinterest(root, target, 0)
-                            firetouchinterest(root, target, 1)
-                        end
-                        local p = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
-                        if p and fireproximityprompt then fireproximityprompt(p) end
-                    end
-                end
-                FireAllRemotes({"recycle", "depositscrap", "recycler"}, Flags.RecycleThreshold)
-                ClickGuiButton("recycle")
+                TouchPads({"recycler", "recycle"})
+                CallRemotes({"recycle", "deposit", "recycler"}, Flags.RecycleThreshold)
+                ClickGuiByPattern("recycle")
             end)
         end
         task.wait(0.8)
@@ -194,70 +211,87 @@ task.spawn(function()
     while true do
         if Flags.AutoUpgradeRecycler then
             pcall(function()
-                FireAllRemotes({"upgraderecycler", "recyclerupgrade", "machinerecycler"})
-                ClickGuiButton("upgrade recycler")
+                TouchPads({"upgraderecycler", "recyclerupgrade"})
+                CallRemotes({"upgraderecycler", "recyclerupgrade"})
+                ClickGuiByPattern("upgrade recycler")
             end)
         end
-        task.wait(1.2)
+        task.wait(1)
     end
 end)
 
--- 6. PLOT UPGRADES
+-- 6. AUTO REBIRTH
 task.spawn(function()
     while true do
         if Flags.AutoRebirth then
             pcall(function()
-                FireAllRemotes({"rebirth", "dorebirth"})
-                ClickGuiButton("rebirth")
+                ClickGuiByPattern("rebirth")
+                ClickGuiByPattern("confirm")
+                ClickGuiByPattern("yes")
+                CallRemotes({"rebirth", "dorebirth", "playerrebirth"})
+                TouchPads({"rebirth"})
             end)
         end
+        task.wait(0.5)
+    end
+end)
+
+-- 7. PLOT UPGRADES
+task.spawn(function()
+    while true do
         if Flags.AutoUpgradeCoop then
             pcall(function()
-                FireAllRemotes({"upgradecoop", "coopupgrade", "upgradeplot"})
-                ClickGuiButton("upgrade coop")
+                TouchPads({"coop", "upgrade coop", "upgradeplot"})
+                CallRemotes({"upgradecoop", "coopupgrade", "upgradeplot"})
+                ClickGuiByPattern("upgrade coop")
             end)
         end
         if Flags.AutoUpgradeFeeder then
             pcall(function()
-                FireAllRemotes({"upgradefeeder", "feederupgrade"})
-                ClickGuiButton("upgrade feeder")
+                TouchPads({"upgrade feeder", "feeder"})
+                CallRemotes({"upgradefeeder", "feederupgrade"})
+                ClickGuiByPattern("upgrade feeder")
             end)
         end
         if Flags.AutoBuyFeeders then
             pcall(function()
-                FireAllRemotes({"buyfeeder", "purchasefeeder", "feeder"})
-                ClickGuiButton("buy feeder")
+                TouchPads({"buy feeder", "feeder"})
+                CallRemotes({"buyfeeder", "purchasefeeder", "feeder"})
+                ClickGuiByPattern("buy feeder")
             end)
         end
         task.wait(0.8)
     end
 end)
 
--- 7. BATTLE AUTOMATION
+-- 8. BATTLE HANDLERS
 task.spawn(function()
     while true do
         if Flags.AutoStartTower then
             pcall(function()
-                FireAllRemotes({"tower", "starttower", "entertower"})
-                ClickGuiButton("tower")
+                ClickGuiByPattern("tower")
+                CallRemotes({"tower", "starttower", "entertower"})
+                TouchPads({"tower"})
             end)
         end
         if Flags.AutoStartChaos then
             pcall(function()
-                FireAllRemotes({"chaos", "startchaos", "enterchaos"})
-                ClickGuiButton("chaos")
-                ClickGuiButton("to chaos")
+                ClickGuiByPattern("to chaos")
+                ClickGuiByPattern("chaos")
+                CallRemotes({"chaos", "startchaos", "enterchaos"})
+                TouchPads({"chaos"})
             end)
         end
         if Flags.AutoNoThanks then
             pcall(function()
-                FireAllRemotes({"nothanks", "skip", "decline"})
-                ClickGuiButton("no thanks")
-                ClickGuiButton("nothanks")
-                ClickGuiButton("skip")
+                ClickGuiByPattern("no thanks")
+                ClickGuiByPattern("nothanks")
+                ClickGuiByPattern("skip")
+                ClickGuiByPattern("claim")
+                CallRemotes({"nothanks", "skip", "decline"})
             end)
         end
-        task.wait(0.4)
+        task.wait(0.3)
     end
 end)
 
@@ -326,7 +360,7 @@ Min.MouseButton1Click:Connect(function()
     tw(Main, {Size = UDim2.fromOffset(W, minState and 34 or H)}, 0.15)
 end)
 
--- Drag
+-- Drag System
 local drag, dStart, fStart
 Top.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
@@ -343,7 +377,7 @@ UserInputService.InputChanged:Connect(function(i)
     end
 end)
 
--- TabBar
+-- Tab Bar
 local TabFrame = Instance.new("Frame", Main)
 TabFrame.Size = UDim2.new(1, 0, 0, 28)
 TabFrame.Position = UDim2.fromOffset(0, 34)
@@ -353,7 +387,7 @@ TabFrame.BorderSizePixel = 0
 local TabList = Instance.new("UIListLayout", TabFrame)
 TabList.FillDirection = Enum.FillDirection.Horizontal
 
--- Content
+-- Content Area
 local Content = Instance.new("ScrollingFrame", Main)
 Content.Size = UDim2.new(1, -12, 1, -68)
 Content.Position = UDim2.fromOffset(6, 64)
@@ -495,7 +529,7 @@ local function AddSlider(parent, text, maxV, defV, flagKey)
     end)
 end
 
--- Setup
+-- Setup Tabs
 local FarmPage = MakeTab("Farm", 1)
 local PlotPage = MakeTab("Plot", 2)
 local BattlePage = MakeTab("Battle", 3)
