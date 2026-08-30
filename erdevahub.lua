@@ -59,37 +59,22 @@ local function GetFlatDistance(posA, posB)
     return Vector2.new(posA.X - posB.X, posA.Z - posB.Z).Magnitude
 end
 
-RunService.Stepped:Connect(function()
-    if IsRunning and (Flags.AutoGrabScraps or Flags.AutoRecycleScrap) then
-        local char = GetChar()
-        if char then
-            for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") and part.CanCollide then
-                    part.CanCollide = false
-                end
-            end
-        end
-    end
-end)
-
 local function GroundRunTo(targetPos, maxWait, stopDistance)
     if not IsRunning then return false end
-    local root = GetRoot()
     local hum = GetHumanoid()
-    if not root or not hum then return false end
-    local stopDist = stopDistance or 2.2
+    local root = GetRoot()
+    if not hum or not root then return false end
+    local stopDist = stopDistance or 3.5
+    local timeout = maxWait or 8.0
     local start = tick()
-    local timeout = maxWait or 4.0
+    hum.WalkSpeed = 16
     while IsRunning and GetFlatDistance(root.Position, targetPos) > stopDist and (tick() - start < timeout) do
-        local dir = Vector3.new(targetPos.X - root.Position.X, 0, targetPos.Z - root.Position.Z).Unit
-        root.AssemblyLinearVelocity = Vector3.new(dir.X * 24, root.AssemblyLinearVelocity.Y, dir.Z * 24)
-        root.CFrame = CFrame.new(root.Position, Vector3.new(targetPos.X, root.Position.Y, targetPos.Z))
         hum:MoveTo(targetPos)
-        hum:ChangeState(Enum.HumanoidStateType.Running)
-        task.wait(0.02)
+        task.wait(0.08 + math.random() * 0.04)
     end
-    return GetFlatDistance(root.Position, targetPos) <= (stopDist + 1.5)
+    return GetFlatDistance(root.Position, targetPos) <= (stopDist + 2.0)
 end
+
 
 -- STRICT RECYCLER LOCK: satu-satunya sumber kebenaran posisi recycler milikku
 local RECYCLER_POS = nil  -- hanya diisi oleh user klik tombol atau auto-detect SEKALI
@@ -228,9 +213,8 @@ task.spawn(function()
                 local recyclerPos = GetRecyclerPos()
 
                 if Flags.AutoRecycleScrap and recyclerPos and collectedScraps >= targetCapacity then
-                    GroundRunTo(recyclerPos, 5.0, 2.5)
-                    root.AssemblyLinearVelocity = Vector3.zero
-                    task.wait(1.5)
+                    GroundRunTo(recyclerPos, 8.0, 3.0)
+                    task.wait(1.2 + math.random() * 0.6)
                     collectedScraps = 0
                     BlacklistedScraps = {}
                 else
@@ -247,13 +231,13 @@ task.spawn(function()
                         end
                     end
                     if closestPart and collectedScraps < targetCapacity then
-                        GroundRunTo(closestPart.Position, 2.0, 2.2)
+                        GroundRunTo(closestPart.Position, 4.0, 3.0)
+                        task.wait(0.15 + math.random() * 0.2)
                         BlacklistedScraps[closestPart] = true
                         collectedScraps = collectedScraps + 1
                     else
-                        root.AssemblyLinearVelocity = Vector3.zero
                         BlacklistedScraps = {}
-                        task.wait(0.1)
+                        task.wait(0.3 + math.random() * 0.3)
                     end
                 end
             end)
