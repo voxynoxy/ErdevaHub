@@ -3,6 +3,7 @@ local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 
@@ -27,9 +28,6 @@ local function tw(o, p, t)
     TweenService:Create(o, TweenInfo.new(t or 0.15), p):Play()
 end
 
---==================================================
--- AUTOMATION ENGINE
---==================================================
 local Flags = {
     AutoOpenEggs = false,
     AutoFuseChickens = false,
@@ -46,17 +44,34 @@ local Flags = {
     AutoStartChaos = false
 }
 
--- Remote Search & Execute
-local function FireRemote(names, ...)
-    local args = {...}
-    for _, name in ipairs(names) do
-        local lowerName = name:lower()
-        for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
-            if obj:IsA("RemoteEvent") and obj.Name:lower():find(lowerName) then
-                pcall(function() obj:FireServer(unpack(args)) end)
-                return true
-            elseif obj:IsA("RemoteFunction") and obj.Name:lower():find(lowerName) then
-                pcall(function() obj:InvokeServer(unpack(args)) end)
+--==================================================
+-- POWERFUL GAME ACTION ENGINE
+--==================================================
+
+local function GetCharacter()
+    return player.Character or player.CharacterAdded:Wait()
+end
+
+local function GetRoot()
+    local char = player.Character
+    return char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso"))
+end
+
+local function ClickGuiButton(pattern)
+    local pGui = player:FindFirstChild("PlayerGui")
+    if not pGui then return false end
+    pattern = pattern:lower()
+    for _, b in ipairs(pGui:GetDescendants()) do
+        if (b:IsA("TextButton") or b:IsA("ImageButton")) and b.Visible then
+            local t = b.Name:lower() .. " " .. (b:IsA("TextButton") and b.Text:lower() or "")
+            if t:find(pattern) then
+                if getconnections then
+                    for _, c in ipairs(getconnections(b.MouseButton1Click)) do c:Fire() end
+                    for _, c in ipairs(getconnections(b.Activated)) do c:Fire() end
+                end
+                pcall(function()
+                    firesignal(b.MouseButton1Click)
+                end)
                 return true
             end
         end
@@ -64,129 +79,190 @@ local function FireRemote(names, ...)
     return false
 end
 
--- Auto Grab Scraps
+local function FireAllRemotes(keywords, ...)
+    local args = {...}
+    for _, desc in ipairs(ReplicatedStorage:GetDescendants()) do
+        if desc:IsA("RemoteEvent") or desc:IsA("RemoteFunction") then
+            local n = desc.Name:lower()
+            for _, k in ipairs(keywords) do
+                if n:find(k:lower()) then
+                    pcall(function()
+                        if desc:IsA("RemoteEvent") then
+                            desc:FireServer(unpack(args))
+                        else
+                            desc:InvokeServer(unpack(args))
+                        end
+                    end)
+                end
+            end
+        end
+    end
+end
+
+-- 1. AUTO GRAB SCRAPS
 task.spawn(function()
     while true do
         if Flags.AutoGrabScraps then
             pcall(function()
+                local root = GetRoot()
                 for _, obj in ipairs(workspace:GetDescendants()) do
                     if not Flags.AutoGrabScraps then break end
-                    if obj:IsA("BasePart") and (obj.Name:lower():find("scrap") or (obj.Parent and obj.Parent.Name:lower():find("scrap"))) then
-                        local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt") or (obj.Parent and obj.Parent:FindFirstChildWhichIsA("ProximityPrompt"))
-                        if prompt and fireproximityprompt then
-                            fireproximityprompt(prompt)
-                        elseif player.Character and player.Character:FindFirstChild("HumanoidRootPart") and firetouchinterest then
-                            firetouchinterest(player.Character.HumanoidRootPart, obj, 0)
-                            task.wait(0.05)
-                            firetouchinterest(player.Character.HumanoidRootPart, obj, 1)
-                        end
-                    end
-                end
-                FireRemote({"grabscrap", "collectscrap", "pickupscrap", "scrap"})
-            end)
-        end
-        task.wait(0.3)
-    end
-end)
-
--- Auto Open Eggs
-task.spawn(function()
-    while true do
-        if Flags.AutoOpenEggs then
-            pcall(function()
-                FireRemote({"openegg", "hatchegg", "buyegg", "egg", "hatch"})
-            end)
-        end
-        task.wait(0.6)
-    end
-end)
-
--- Auto Fuse Chickens
-task.spawn(function()
-    while true do
-        if Flags.AutoFuseChickens then
-            pcall(function()
-                FireRemote({"fusechickens", "fuseall", "fuse", "mergechickens", "merge", "autofuse"})
-            end)
-        end
-        task.wait(1)
-    end
-end)
-
--- Auto Recycle Scrap
-task.spawn(function()
-    while true do
-        if Flags.AutoRecycleScrap then
-            pcall(function()
-                FireRemote({"recyclescrap", "recycle", "depositscrap", "recycler"}, Flags.RecycleThreshold)
-            end)
-        end
-        task.wait(1)
-    end
-end)
-
--- Auto Upgrade Recycler
-task.spawn(function()
-    while true do
-        if Flags.AutoUpgradeRecycler then
-            pcall(function()
-                FireRemote({"upgraderecycler", "upgrademachine", "buyrecyclerupgrade", "recyclerupgrade"})
-            end)
-        end
-        task.wait(1.5)
-    end
-end)
-
--- Plot Upgrades
-task.spawn(function()
-    while true do
-        if Flags.AutoRebirth then
-            pcall(function() FireRemote({"rebirth", "playerrebirth", "dorebirth"}) end)
-        end
-        if Flags.AutoUpgradeCoop then
-            pcall(function() FireRemote({"upgradecoop", "buycoopupgrade", "coopupgrade", "upgradeplot"}) end)
-        end
-        if Flags.AutoUpgradeFeeder then
-            pcall(function() FireRemote({"upgradefeeder", "upgradefeeders", "feederupgrade"}) end)
-        end
-        if Flags.AutoBuyFeeders then
-            pcall(function() FireRemote({"buyfeeder", "buyfeeders", "purchasefeeder"}) end)
-        end
-        task.wait(1)
-    end
-end)
-
--- Battle Handlers
-task.spawn(function()
-    while true do
-        if Flags.AutoStartTower then
-            pcall(function() FireRemote({"starttower", "towerstart", "entertower", "jointower"}) end)
-        end
-        if Flags.AutoStartChaos then
-            pcall(function() FireRemote({"startchaos", "chaosstart", "enterchaos", "joinchaos"}) end)
-        end
-        if Flags.AutoNoThanks then
-            pcall(function()
-                FireRemote({"nothanks", "claimnothanks", "skipreward", "declinereward"})
-                local pGui = player:FindFirstChild("PlayerGui")
-                if pGui then
-                    for _, b in ipairs(pGui:GetDescendants()) do
-                        if (b:IsA("TextButton") or b:IsA("ImageButton")) and b.Visible then
-                            local text = (b:IsA("TextButton") and b.Text:lower()) or b.Name:lower()
-                            if text:find("no thanks") or text:find("nothanks") or text:find("skip") then
-                                for _, c in ipairs(getconnections(b.MouseButton1Click)) do c:Fire() end
+                    local n = obj.Name:lower()
+                    if (n:find("scrap") or n:find("trash") or n:find("drop")) and (obj:IsA("BasePart") or obj:IsA("Model")) then
+                        local targetPart = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
+                        if targetPart then
+                            local p = targetPart:FindFirstChildWhichIsA("ProximityPrompt") or (obj:FindFirstChildWhichIsA("ProximityPrompt"))
+                            if p and fireproximityprompt then
+                                fireproximityprompt(p)
+                            end
+                            if root and firetouchinterest then
+                                firetouchinterest(root, targetPart, 0)
+                                firetouchinterest(root, targetPart, 1)
+                            end
+                            if root and (root.Position - targetPart.Position).Magnitude < 80 then
+                                local oldCF = root.CFrame
+                                root.CFrame = targetPart.CFrame
+                                task.wait(0.05)
+                                root.CFrame = oldCF
                             end
                         end
                     end
                 end
+                FireAllRemotes({"grabscrap", "collectscrap", "pickupscrap", "scrap", "farm"})
+            end)
+        end
+        task.wait(0.2)
+    end
+end)
+
+-- 2. AUTO OPEN EGGS / INCUBATOR
+task.spawn(function()
+    while true do
+        if Flags.AutoOpenEggs then
+            pcall(function()
+                FireAllRemotes({"egg", "hatch", "openegg", "incubator", "buyegg"})
+                ClickGuiButton("hatch")
+                ClickGuiButton("open")
+                ClickGuiButton("egg")
             end)
         end
         task.wait(0.5)
     end
 end)
 
+-- 3. AUTO FUSE CHICKENS
+task.spawn(function()
+    while true do
+        if Flags.AutoFuseChickens then
+            pcall(function()
+                FireAllRemotes({"fuse", "merge", "autofuse", "chicken"})
+                ClickGuiButton("fuse")
+                ClickGuiButton("merge")
+            end)
+        end
+        task.wait(0.8)
+    end
+end)
+
+-- 4. AUTO RECYCLE SCRAP
+task.spawn(function()
+    while true do
+        if Flags.AutoRecycleScrap then
+            pcall(function()
+                local root = GetRoot()
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj.Name:lower():find("recycler") or obj.Name:lower():find("recycle") then
+                        local target = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
+                        if target and root and firetouchinterest then
+                            firetouchinterest(root, target, 0)
+                            firetouchinterest(root, target, 1)
+                        end
+                        local p = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+                        if p and fireproximityprompt then fireproximityprompt(p) end
+                    end
+                end
+                FireAllRemotes({"recycle", "depositscrap", "recycler"}, Flags.RecycleThreshold)
+                ClickGuiButton("recycle")
+            end)
+        end
+        task.wait(0.8)
+    end
+end)
+
+-- 5. AUTO UPGRADE RECYCLER
+task.spawn(function()
+    while true do
+        if Flags.AutoUpgradeRecycler then
+            pcall(function()
+                FireAllRemotes({"upgraderecycler", "recyclerupgrade", "machinerecycler"})
+                ClickGuiButton("upgrade recycler")
+            end)
+        end
+        task.wait(1.2)
+    end
+end)
+
+-- 6. PLOT UPGRADES
+task.spawn(function()
+    while true do
+        if Flags.AutoRebirth then
+            pcall(function()
+                FireAllRemotes({"rebirth", "dorebirth"})
+                ClickGuiButton("rebirth")
+            end)
+        end
+        if Flags.AutoUpgradeCoop then
+            pcall(function()
+                FireAllRemotes({"upgradecoop", "coopupgrade", "upgradeplot"})
+                ClickGuiButton("upgrade coop")
+            end)
+        end
+        if Flags.AutoUpgradeFeeder then
+            pcall(function()
+                FireAllRemotes({"upgradefeeder", "feederupgrade"})
+                ClickGuiButton("upgrade feeder")
+            end)
+        end
+        if Flags.AutoBuyFeeders then
+            pcall(function()
+                FireAllRemotes({"buyfeeder", "purchasefeeder", "feeder"})
+                ClickGuiButton("buy feeder")
+            end)
+        end
+        task.wait(0.8)
+    end
+end)
+
+-- 7. BATTLE AUTOMATION
+task.spawn(function()
+    while true do
+        if Flags.AutoStartTower then
+            pcall(function()
+                FireAllRemotes({"tower", "starttower", "entertower"})
+                ClickGuiButton("tower")
+            end)
+        end
+        if Flags.AutoStartChaos then
+            pcall(function()
+                FireAllRemotes({"chaos", "startchaos", "enterchaos"})
+                ClickGuiButton("chaos")
+                ClickGuiButton("to chaos")
+            end)
+        end
+        if Flags.AutoNoThanks then
+            pcall(function()
+                FireAllRemotes({"nothanks", "skip", "decline"})
+                ClickGuiButton("no thanks")
+                ClickGuiButton("nothanks")
+                ClickGuiButton("skip")
+            end)
+        end
+        task.wait(0.4)
+    end
+end)
+
 --==================================================
--- UI CREATION
+-- GUI CREATION
 --==================================================
 local Gui = Instance.new("ScreenGui", CoreGui)
 Gui.Name = "ERDEVA_HUB"
@@ -250,7 +326,7 @@ Min.MouseButton1Click:Connect(function()
     tw(Main, {Size = UDim2.fromOffset(W, minState and 34 or H)}, 0.15)
 end)
 
--- Drag System
+-- Drag
 local drag, dStart, fStart
 Top.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
@@ -267,7 +343,7 @@ UserInputService.InputChanged:Connect(function(i)
     end
 end)
 
--- Tab Bar
+-- TabBar
 local TabFrame = Instance.new("Frame", Main)
 TabFrame.Size = UDim2.new(1, 0, 0, 28)
 TabFrame.Position = UDim2.fromOffset(0, 34)
@@ -277,7 +353,7 @@ TabFrame.BorderSizePixel = 0
 local TabList = Instance.new("UIListLayout", TabFrame)
 TabList.FillDirection = Enum.FillDirection.Horizontal
 
--- Content Area
+-- Content
 local Content = Instance.new("ScrollingFrame", Main)
 Content.Size = UDim2.new(1, -12, 1, -68)
 Content.Position = UDim2.fromOffset(6, 64)
@@ -419,7 +495,7 @@ local function AddSlider(parent, text, maxV, defV, flagKey)
     end)
 end
 
--- Pages Setup
+-- Setup
 local FarmPage = MakeTab("Farm", 1)
 local PlotPage = MakeTab("Plot", 2)
 local BattlePage = MakeTab("Battle", 3)
