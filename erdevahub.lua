@@ -60,7 +60,6 @@ local function FlatDist(a, b)
     return Vector2.new(a.X - b.X, a.Z - b.Z).Magnitude
 end
 
--- Gerakan 100% natural menggunakan Humanoid bawaan Roblox
 local function WalkTo(targetPos, timeout, stopDist)
     if not IsRunning then return end
     local hum  = GetHumanoid()
@@ -613,7 +612,7 @@ do
             lockBtn.BackgroundColor3 = Color3.fromRGB(20,120,20)
             task.delay(2, function()
                 if lockBtn and lockBtn.Parent then
-                    lockBtn.Text = "📌 KUNCI POSISI RECYCLER SAYA"
+                    lockBtn.Text = "KUNCI POSISI RECYCLER"
                     lockBtn.BackgroundColor3 = Color3.fromRGB(180,30,30)
                 end
             end)
