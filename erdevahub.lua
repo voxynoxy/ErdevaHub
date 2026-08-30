@@ -682,7 +682,7 @@ do
     local lockBtn = Instance.new("TextButton", wrapper)
     lockBtn.Size = UDim2.new(1,-8,0,28) lockBtn.Position = UDim2.fromOffset(4,22)
     lockBtn.BackgroundColor3 = Color3.fromRGB(180,30,30)
-    lockBtn.Text = "[LOCK] Set My Recycler Position"
+    lockBtn.Text = "Set My Recycler Position"
     lockBtn.TextColor3 = Color3.fromRGB(255,255,255)
     lockBtn.TextSize = 11 lockBtn.Font = Enum.Font.GothamBold
     Instance.new("UICorner", lockBtn).CornerRadius = UDim.new(0,5)
