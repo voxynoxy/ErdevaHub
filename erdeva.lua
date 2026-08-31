@@ -1,3 +1,4 @@
+-- [[ ERDEVA HUB v1.6.1 - NATIVE ROBLOX NOTIFICATION ONLY ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -9,9 +10,6 @@ local player = Players.LocalPlayer
 pcall(function()
     if CoreGui:FindFirstChild("ERDEVA_HUB") then
         CoreGui:FindFirstChild("ERDEVA_HUB"):Destroy()
-    end
-    if CoreGui:FindFirstChild("ERDEVA_NOTIF") then
-        CoreGui:FindFirstChild("ERDEVA_NOTIF"):Destroy()
     end
 end)
 
@@ -31,67 +29,14 @@ local function tw(o, p, t)
     TweenService:Create(o, TweenInfo.new(t or 0.15), p):Play()
 end
 
--- NOTIFIKASI KANAN BAWAH
+-- NOTIFIKASI BAWAAN ASLI ROBLOX DI KANAN BAWAH
 local function Notify(title, desc, duration)
-    duration = duration or 4.5
     pcall(function()
-        StarterGui:SetCore("SendNotification", { Title = title, Text = desc, Duration = duration })
-    end)
-    task.spawn(function()
-        local notifGui = Instance.new("ScreenGui")
-        notifGui.Name = "ERDEVA_NOTIF"
-        notifGui.ResetOnSpawn = false
-        notifGui.DisplayOrder = 10000
-        pcall(function() notifGui.Parent = CoreGui end)
-        if not notifGui.Parent then notifGui.Parent = player:FindFirstChild("PlayerGui") end
-
-        local box = Instance.new("Frame", notifGui)
-        box.Size = UDim2.fromOffset(260, 64)
-        box.AnchorPoint = Vector2.new(1, 1)
-        box.Position = UDim2.new(1, 280, 1, -20)
-        box.BackgroundColor3 = C.Bg
-        box.BorderSizePixel = 0
-        Instance.new("UICorner", box).CornerRadius = UDim.new(0, 8)
-
-        local stroke = Instance.new("UIStroke", box)
-        stroke.Color = C.Red
-        stroke.Thickness = 1.2
-
-        local glow = Instance.new("Frame", box)
-        glow.Size = UDim2.new(0, 4, 1, -12)
-        glow.Position = UDim2.fromOffset(6, 6)
-        glow.BackgroundColor3 = C.Red
-        glow.BorderSizePixel = 0
-        Instance.new("UICorner", glow).CornerRadius = UDim.new(1, 0)
-
-        local tLabel = Instance.new("TextLabel", box)
-        tLabel.Size = UDim2.new(1, -25, 0, 20)
-        tLabel.Position = UDim2.fromOffset(18, 8)
-        tLabel.BackgroundTransparency = 1
-        tLabel.Text = title
-        tLabel.TextColor3 = C.Txt
-        tLabel.TextSize = 13
-        tLabel.Font = Enum.Font.GothamBold
-        tLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-        local dLabel = Instance.new("TextLabel", box)
-        dLabel.Size = UDim2.new(1, -25, 0, 28)
-        dLabel.Position = UDim2.fromOffset(18, 28)
-        dLabel.BackgroundTransparency = 1
-        dLabel.Text = desc
-        dLabel.TextColor3 = C.Sub
-        dLabel.TextSize = 10
-        dLabel.Font = Enum.Font.GothamMedium
-        dLabel.TextXAlignment = Enum.TextXAlignment.Left
-        dLabel.TextWrapped = true
-
-        box:TweenPosition(UDim2.new(1, -20, 1, -20), Enum.EasingDirection.Out, Enum.EasingStyle.Quart, 0.4, true)
-        task.wait(duration)
-        if box and box.Parent then
-            box:TweenPosition(UDim2.new(1, 280, 1, -20), Enum.EasingDirection.In, Enum.EasingStyle.Quart, 0.35, true)
-            task.wait(0.4)
-            pcall(function() notifGui:Destroy() end)
-        end
+        StarterGui:SetCore("SendNotification", {
+            Title = title,
+            Text = desc,
+            Duration = duration or 4.5
+        })
     end)
 end
 
@@ -374,7 +319,6 @@ end
 local function IsGroundScrap(obj)
     if not obj:IsA("BasePart") or not obj.Parent then return false end
     
-    -- Jangan ambil part dari karakter player
     local char = GetChar()
     if char and obj:IsDescendantOf(char) then return false end
     local anc = obj:FindFirstAncestorOfClass("Model")
@@ -384,13 +328,11 @@ local function IsGroundScrap(obj)
     local pn = obj.Parent.Name:lower()
     local ppn = (obj.Parent.Parent and obj.Parent.Parent.Name:lower()) or ""
     
-    -- Cek nama atau bentuk lempengan/plat di lantai
     local isScrapName = (n:find("scrap") or n:find("plate") or n:find("trash") or n:find("drop") or n:find("poop") or pn:find("scrap") or pn:find("plate") or pn:find("trash") or pn:find("drop") or ppn:find("scrap"))
     local isExcluded = (n:find("recycler") or n:find("feeder") or n:find("upgrade") or n:find("shop") or n:find("button") or n:find("coop") or pn:find("recycler") or pn:find("feeder") or pn:find("shop") or n:find("arena") or pn:find("arena") or n:find("floor") or n:find("base") or n:find("fence"))
     
     if isScrapName and not isExcluded then return true end
     
-    -- Deteksi bentuk plat tipis jika nama tidak spesifik (lebar 1-5 studs, tebal < 0.8)
     if not isExcluded and obj.Size.Y < 0.8 and obj.Size.X > 0.8 and obj.Size.Z > 0.8 and obj.Size.X < 6 and obj.Size.Z < 6 then
         if obj.Position.Y < 50 and (obj.Material == Enum.Material.CorrodedMetal or obj.Material == Enum.Material.Metal or obj.Material == Enum.Material.SmoothPlastic or obj.Material == Enum.Material.Neon) then
             return true
@@ -427,7 +369,6 @@ local function FindBestScrap()
     return best
 end
 
--- AMBIL LEMPENGAN PLAT DENGAN CEPAT
 local function TryCollectScrap(scrap)
     if not scrap or not scrap.Parent or not IsGroundScrap(scrap) then return false end
     
@@ -679,13 +620,13 @@ task.spawn(function()
                     TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 2)
                 end
                 
-                -- RECYCLE JIKA TARGET CAPACITY SUDAH TERCAPAI ATAU JIKA TANGAN SUDAH PENUH (GAGAL AMBIL 4x)
+                -- RECYCLE JIKA SUDAH TERCAPAI ATAU TANGAN PENUH
                 if Flags.AutoRecycleScrap and (CurrentBatchScraps >= targetCap or (CurrentBatchScraps > 0 and ConsecutiveFails >= 4)) then
                     SetState(State.RECYCLING)
                     return
                 end
                 
-                -- AMBIL PLAT DI LANTAI
+                -- AMBIL PLAT
                 if Flags.AutoGrabScraps then
                     local scrap = FindBestScrap()
                     if scrap then
@@ -751,7 +692,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v1.6</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v1.6.1</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
