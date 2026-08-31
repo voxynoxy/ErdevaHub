@@ -573,6 +573,11 @@ end
 
 local function RecycleScrap()
     local recyclerPos = GetRecyclerPos()
+    local recyclerPad = nil
+    if not recyclerPos then
+        recyclerPad = FindPadByKeyword("recycle")
+        recyclerPos = recyclerPad and recyclerPad.part and recyclerPad.part.Position or nil
+    end
     if not recyclerPos then return false end
     return RunExclusiveAction(function()
         if not CanRunAction("RecycleScrap", 2.5) then return false end
@@ -580,7 +585,11 @@ local function RecycleScrap()
         local moneyBefore = GetMoneyValue()
         if not WalkTo(recyclerPos, 8, 2.8) then return false end
         Debug("Recycler reached")
-        TriggerNearbyPrompt("recycle", 12)
+        if recyclerPad and recyclerPad.prompt and recyclerPad.prompt:IsA("ProximityPrompt") then
+            TriggerPrompt(recyclerPad.prompt)
+        else
+            TriggerNearbyPrompt("recycle", 12)
+        end
         TryClickGuiAction("RecycleScrap", { "recycle", "sell scrap", "convert" }, 2)
         SafeDismissPopups()
         local t0 = tick()
@@ -611,7 +620,11 @@ local function RebirthAvailable()
     for _, b in ipairs(pg:GetDescendants()) do
         if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
             local text = ButtonText(b)
-            if text:find("rebirth") and not text:find("auto") and not text:find("master") then
+            local looksReady = text:find("claim") or text:find("available") or text:find("ready")
+                or text:find("do rebirth") or text:find("rebirth")
+            local blocked = text:find("auto") or text:find("master") or text:find("locked")
+                or text:find("require") or text:find("need")
+            if looksReady and text:find("rebirth") and not blocked then
                 return true
             end
         end
@@ -731,11 +744,7 @@ task.spawn(function()
                 if Flags.AutoStartChaos then
                     Debug("AutoStartChaos TODO: no safe prompt/UI implementation found")
                 end
-                if Flags.AutoRebirth and RebirthAvailable() then
-                    SetState(State.REBIRTH)
-                    return
-                end
-                if Flags.AutoRecycleScrap and GetRecyclerPos() and count > 0 and (count >= cap or not Flags.AutoGrabScraps) then
+                if Flags.AutoRecycleScrap and count > 0 and (count >= cap or not Flags.AutoGrabScraps) then
                     Debug("Capacity reached")
                     SetState(State.RECYCLING)
                     return
@@ -763,7 +772,11 @@ task.spawn(function()
                 end
             elseif CurrentState == State.UPGRADING then
                 RunUpgrades()
-                SetState(State.COLLECTING)
+                if Flags.AutoRebirth and RebirthAvailable() then
+                    SetState(State.REBIRTH)
+                else
+                    SetState(State.COLLECTING)
+                end
             elseif CurrentState == State.REBIRTH then
                 DoRebirth()
                 task.wait(1)
@@ -915,11 +928,22 @@ local function AddToggle(parent, label, key)
     b.MouseButton1Click:Connect(function()
         local ns = not Flags[key]
         SetFlag(key, ns)
-        if key == "AutoRebirth" and ns then
-            SetFlag("AutoGrabScraps", true)
-            SetFlag("AutoRecycleScrap", true)
-            SetFlag("AutoBuyFeeders", true)
-            SetFlag("AutoUpgradeFeeder", true)
+        if key == "AutoRebirth" then
+            if ns then
+                SetFlag("AutoGrabScraps", true)
+                SetFlag("AutoRecycleScrap", true)
+                SetFlag("AutoBuyFeeders", true)
+                SetFlag("AutoUpgradeFeeder", true)
+            else
+                for _, fk in ipairs({"AutoOpenEggs","AutoGrabScraps","AutoRecycleScrap","AutoUpgradeRecycler",
+                                      "AutoBuyFeeders","AutoUpgradeFeeder","AutoUpgradeCoop",
+                                      "AutoStartTower","AutoNoThanks","AutoStartChaos"}) do
+                    SetFlag(fk, false)
+                end
+                collectedScraps = 0
+                table.clear(BlacklistedScraps)
+                SetState(State.IDLE)
+            end
         end
     end)
 end
@@ -1031,6 +1055,6 @@ end
 AddInfo("Hub",    "ERDEVA HUB")
 AddInfo("Game",   "Chicken Farm")
 AddInfo("Player", player.DisplayName)
-AddInfo("Status", "Operational")
+AddInfo("Status", "User")
 
 SetTab("Farm")
