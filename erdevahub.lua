@@ -159,10 +159,12 @@ local function TriggerNearbyPrompt(keyword, radius)
             local part = obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent or obj:FindFirstAncestorWhichIsA("BasePart")
             if part then
                 local text = (obj.ActionText .. " " .. obj.ObjectText .. " " .. obj.Name .. " " .. part.Name):lower()
-                local d = (root.Position - part.Position).Magnitude
-                if d <= bestDist and (not keyword or text:find(keyword)) then
-                    best = obj
-                    bestDist = d
+                if not (text:find("event") or text:find("follow") or text:find("update") or text:find("news") or text:find("board")) then
+                    local d = (root.Position - part.Position).Magnitude
+                    if d <= bestDist and (not keyword or text:find(keyword)) then
+                        best = obj
+                        bestDist = d
+                    end
                 end
             end
         end
@@ -379,35 +381,41 @@ local function FindBasePad(keywords)
         if obj:IsA("ProximityPrompt") then
             local part = obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent or obj:FindFirstAncestorWhichIsA("BasePart")
             local text = (obj.ActionText .. " " .. obj.ObjectText .. " " .. obj.Name .. " " .. (part and part.Name or "")):lower()
-            for _, kw in ipairs(keywords) do
-                if text:find(kw:lower()) then
-                    matched = true
-                    targetPart = part
-                    prompt = obj
-                    break
+            if not (text:find("event") or text:find("follow") or text:find("update") or text:find("board")) then
+                for _, kw in ipairs(keywords) do
+                    if text:find(kw:lower()) then
+                        matched = true
+                        targetPart = part
+                        prompt = obj
+                        break
+                    end
                 end
             end
         elseif obj:IsA("TextLabel") or obj:IsA("SurfaceGui") or obj:IsA("BillboardGui") then
             local text = (obj:IsA("TextLabel") and obj.Text or ""):lower()
             local name = obj.Name:lower()
-            for _, kw in ipairs(keywords) do
-                if text:find(kw:lower()) or name:find(kw:lower()) then
-                    matched = true
-                    targetPart = obj:FindFirstAncestorWhichIsA("BasePart")
-                    if targetPart then
-                        prompt = targetPart:FindFirstChildOfClass("ProximityPrompt") or targetPart:FindFirstChildOfClass("ClickDetector")
+            if not (text:find("event") or text:find("follow") or text:find("update") or text:find("board")) then
+                for _, kw in ipairs(keywords) do
+                    if text:find(kw:lower()) or name:find(kw:lower()) then
+                        matched = true
+                        targetPart = obj:FindFirstAncestorWhichIsA("BasePart")
+                        if targetPart then
+                            prompt = targetPart:FindFirstChildOfClass("ProximityPrompt") or targetPart:FindFirstChildOfClass("ClickDetector")
+                        end
+                        break
                     end
-                    break
                 end
             end
         elseif obj:IsA("BasePart") then
             local name = obj.Name:lower()
-            for _, kw in ipairs(keywords) do
-                if name:find(kw:lower()) then
-                    matched = true
-                    targetPart = obj
-                    prompt = obj:FindFirstChildOfClass("ProximityPrompt") or obj:FindFirstChildOfClass("ClickDetector")
-                    break
+            if not (name:find("event") or name:find("follow") or name:find("update") or name:find("board")) then
+                for _, kw in ipairs(keywords) do
+                    if name:find(kw:lower()) then
+                        matched = true
+                        targetPart = obj
+                        prompt = obj:FindFirstChildOfClass("ProximityPrompt") or obj:FindFirstChildOfClass("ClickDetector")
+                        break
+                    end
                 end
             end
         end
@@ -462,10 +470,11 @@ local function ExecuteUpgradeRecycler()
         if obj:IsA("ProximityPrompt") and obj.Enabled then
             local part = obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent or obj:FindFirstAncestorWhichIsA("BasePart")
             if part then
-                local d = (recPos - part.Position).Magnitude
-                if d <= 25 then
-                    local text = (obj.ActionText .. " " .. obj.ObjectText .. " " .. obj.Name .. " " .. part.Name):lower()
-                    if text:find("upgrade") or text:find("$") or text:find("recycler") or text:find("speed") then
+                local text = (obj.ActionText .. " " .. obj.ObjectText .. " " .. obj.Name .. " " .. part.Name):lower()
+                -- HANYA TEKAN JIKA UPGRADE RECYCLER DAN BUKAN EVENT/COOP/BOARD
+                if (text:find("upgrade") or text:find("recycler")) and not (text:find("event") or text:find("follow") or text:find("coop") or text:find("feeder") or text:find("board") or text:find("update")) then
+                    local d = (recPos - part.Position).Magnitude
+                    if d <= 20 then
                         TriggerPrompt(obj)
                     end
                 end
