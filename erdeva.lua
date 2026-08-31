@@ -1,4 +1,4 @@
--- [[ ERDEVA HUB v2.3 - TOWER BATTLE & DIRECT REBIRTH ]]
+-- [[ ERDEVA HUB v2.3 - FIXED TOWER & REBIRTH ON TOP OF v2.1 ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -70,7 +70,7 @@ local function GetHumanoid()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
--- HITUNG PLAT DI KEPALA KARAKTER
+-- MENGHITUNG JUMLAH PLAT YANG MENEMPEL DI KEPALA KARAKTER
 local function GetPlatesOnCharacter()
     local char = GetChar()
     if not char then return 0 end
@@ -96,7 +96,7 @@ local function GetTotalCarried()
     return CurrentBatchScraps
 end
 
--- DETEKSI LEVEL AYAM (CONTOH: YB LV.47 DI KANAN ATAS)
+-- DETEKSI LEVEL AYAM DARI UI (CONTOH: YB LV.47)
 local function GetHighestChickenLevel()
     local highest = 0
     local pg = player:FindFirstChild("PlayerGui")
@@ -269,7 +269,7 @@ local function IsVisibleGui(obj)
     return true
 end
 
--- TUTUP POPUP NOT ENOUGH CASH & ROBUR
+-- TUTUP POPUP NOT ENOUGH CASH
 local function DismissAllPopups()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
@@ -334,7 +334,7 @@ local function TryClickGuiAction(actionName, patterns, cooldown)
     return false
 end
 
--- DETEKSI PLAT SCRAP
+-- DETEKSI HANYA PLAT DI ARENA
 local function IsRealScrap(obj)
     if not obj:IsA("BasePart") or not obj.Parent then return false end
     
@@ -394,6 +394,7 @@ local function FindNearestArenaScrap()
     return best
 end
 
+-- AMBIL LEMPENGAN PLAT
 local function CollectScrapPlate(scrap)
     if not scrap or not scrap.Parent then return false end
     local root = GetRoot()
@@ -405,9 +406,15 @@ local function CollectScrapPlate(scrap)
     FastTouch(scrap)
     TriggerNearbyPrompt("scrap", 10)
 
-    CurrentBatchScraps = CurrentBatchScraps + 1
-    BlacklistedScraps[scrap] = tick()
-    return true
+    local pickedUp = (not scrap.Parent) or scrap:IsDescendantOf(char) or FlatDist(root.Position, scrap.Position) <= 3.0
+    if pickedUp then
+        CurrentBatchScraps = CurrentBatchScraps + 1
+        BlacklistedScraps[scrap] = nil
+        return true
+    else
+        BlacklistedScraps[scrap] = tick()
+        return false
+    end
 end
 
 -- CARI PAD DI BASE
@@ -542,7 +549,7 @@ local function DoUpgrades()
     DismissAllPopups()
 end
 
--- CEK APAKAH LAGI DI DALAM BATTLE TOWER
+-- CEK STATUS BATTLE TOWER
 local function IsInTowerBattle()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
@@ -564,12 +571,12 @@ local function IsInTowerBattle()
     return false
 end
 
--- MENJALANKAN TOWER BATTLE
+-- TOWER BATTLE SYSTEM
 local function RunTowerBattle()
-    if not CanRunAction("TowerStartAction", 4) and not IsInTowerBattle() then return false end
+    if not CanRunAction("TowerStartAction", 3) and not IsInTowerBattle() then return false end
     
-    -- Klik tombol Tower di menu bawah atau GUI
-    TryClickGuiAction("StartTowerBtn", { "tower", "start tower", "battle", "enter" }, 2.5)
+    -- Tekan tombol Tower di toolbar bawah / GUI
+    TryClickGuiAction("StartTowerBtn", { "tower", "battle", "enter" }, 2.0)
     task.wait(0.8)
     
     local t0 = tick()
@@ -579,7 +586,7 @@ local function RunTowerBattle()
         end
         TryClickGuiAction("NextFloor", { "claim", "next floor", "victory", "continue", "next", "battle" }, 1.0)
         
-        if not IsInTowerBattle() and tick() - t0 > 5 then
+        if not IsInTowerBattle() and tick() - t0 > 4 then
             break
         end
         task.wait(0.4)
@@ -587,14 +594,14 @@ local function RunTowerBattle()
     return true
 end
 
--- REBIRTH SYSTEM SESUAI GAMBAR 2
+-- REBIRTH SYSTEM SESUAI FOTO 2
 local function CheckAndDoRebirth()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
     
     -- Buka menu Rebirth dari tombol api di kanan layar
     TryClickGuiAction("OpenRebirthMenu", { "rebirth" }, 2.0)
-    task.wait(0.25)
+    task.wait(0.2)
     
     local canRebirth = false
     local rebirthBtn = nil
@@ -602,7 +609,7 @@ local function CheckAndDoRebirth()
     for _, b in ipairs(pg:GetDescendants()) do
         if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
             local text = ButtonText(b)
-            -- Jangan klik jika tombol masih "NOT YET"
+            -- JANGAN klik jika tombol masih "NOT YET"
             if not text:find("not yet") and not text:find("milestones") and not text:find("auto rebirth") then
                 if text:find("rebirth") or text:find("claim") or text:find("do rebirth") or text:find("yes") then
                     canRebirth = true
@@ -637,7 +644,7 @@ local function GetArenaCenter()
     return nil
 end
 
--- LOOP UTAMA
+-- MAIN AUTOMATION LOOP
 task.spawn(function()
     while IsRunning do
         pcall(function()
@@ -656,7 +663,7 @@ task.spawn(function()
                 return
             end
             
-            -- 1. PRIORITAS TOWER: CEK LEVEL AYAM & JALANKAN TOWER JIKA SUDAH TERCAPAI
+            -- 1. CEK TOWER JIKA LEVEL MENCUKUPI
             local curLv = GetHighestChickenLevel()
             local reqLv = tonumber(Flags.TowerMinLevel) or 50
             if (Flags.AutoStartTower or Flags.AutoRebirth) and (curLv >= reqLv or IsInTowerBattle()) then
@@ -666,7 +673,7 @@ task.spawn(function()
                 return
             end
             
-            -- 2. PRIORITAS REBIRTH
+            -- 2. CEK REBIRTH
             if Flags.AutoRebirth then
                 CheckAndDoRebirth()
             end
@@ -674,7 +681,7 @@ task.spawn(function()
             local targetCap = tonumber(Flags.ScrapCapacity) or 20
             local currentTotal = GetTotalCarried()
             
-            -- 3. SIKLUS FARMING SCRAP DI ARENA
+            -- 3. SIKLUS AMBIL PLAT DI ARENA
             if currentTotal < targetCap then
                 SetState(State.COLLECTING)
                 local scrap = FindNearestArenaScrap()
@@ -740,7 +747,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.3 (Tower & Rebirth)</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.3 (Complete)</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
