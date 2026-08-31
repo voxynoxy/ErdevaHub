@@ -61,6 +61,7 @@ local LOCKED_RECYCLER_POS = nil
 local ToggleUpdaters = {}
 local CurrentBatchScraps = 0
 local ChickenInTower = false
+local TowerSentTime = 0
 local LastTowerFinishedAt = 0
 
 local function GetChar() return player.Character end
@@ -537,18 +538,25 @@ local function DoUpgrades()
     DismissAllPopups()
 end
 
+-- TOWER & AUTO NO THANKS BACKGROUND (DENGAN FAILSAFE TIMEOUT)
 task.spawn(function()
     while IsRunning do
         pcall(function()
             local pg = player:FindFirstChild("PlayerGui")
             if not pg then return end
             
+            -- FAILSAFE: JIKA SUDAH LEWAT 45 DETIK, RESET STATUS AGAR BISA MASUK TOWER LAGI
+            if ChickenInTower and (tick() - TowerSentTime > 45) then
+                ChickenInTower = false
+            end
+            
+            -- 1. DETEKSI SELESAI TOWER / NO THANKS
             if Flags.AutoNoThanks then
                 for _, obj in ipairs(pg:GetDescendants()) do
                     local isMatch = false
                     if (obj:IsA("TextLabel") or obj:IsA("TextButton")) and IsVisibleGui(obj) then
                         local t = obj.Text:lower()
-                        if t:find("no thanks") or t:find("nothanks") or t:find("no, thanks") then
+                        if t:find("no thanks") or t:find("nothanks") or t:find("no, thanks") or t:find("keep climbing") then
                             isMatch = true
                         end
                     elseif (obj:IsA("ImageButton") or obj:IsA("GuiObject")) and IsVisibleGui(obj) then
@@ -574,17 +582,21 @@ task.spawn(function()
                 end
             end
             
-            -- JEDA CEPAT 1.5 DETIK SETELAH NO THANKS
+            -- 2. KLIK TOMBOL TOWER JIKA AYAM SEDANG TIDAK DI TOWER
             if (Flags.AutoStartTower or Flags.AutoRebirth) and not ChickenInTower and (tick() - LastTowerFinishedAt >= 1.5) then
-                for _, b in ipairs(pg:GetDescendants()) do
-                    if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
-                        local text = ButtonText(b)
-                        if (text:find("tower") or b.Name:lower() == "tower") and not text:find("rebirth") and not text:find("not yet") and not text:find("no thanks") and not text:find("call") and not text:find("whistle") then
-                            if CanRunAction("SendChickenTower", 3.0) then
-                                ClickGuiButton(b)
-                                ChickenInTower = true
-                                Notify("ERDEVA HUB", "Ayam dikirim ke Tower! Menunggu K.O...", 2.0)
-                                break
+                for _, obj in ipairs(pg:GetDescendants()) do
+                    if IsVisibleGui(obj) then
+                        local t = (obj:IsA("TextLabel") and obj.Text:lower()) or obj.Name:lower()
+                        if t == "tower" or t:find("tower") then
+                            if not t:find("rebirth") and not t:find("not yet") and not t:find("no thanks") and not t:find("call") and not t:find("whistle") then
+                                local btn = obj:IsA("TextButton") and obj or obj:IsA("ImageButton") and obj or obj:FindFirstAncestorWhichIsA("TextButton") or obj:FindFirstAncestorWhichIsA("ImageButton")
+                                if btn and CanRunAction("SendChickenTower", 3.0) then
+                                    ClickGuiButton(btn)
+                                    ChickenInTower = true
+                                    TowerSentTime = tick()
+                                    Notify("ERDEVA HUB", "Ayam dikirim ke Tower! Menunggu K.O...", 2.0)
+                                    break
+                                end
                             end
                         end
                     end
@@ -954,7 +966,7 @@ local function AddInfo(k, v, isLive)
 end
 
 AddInfo("Hub",            "ERDEVA HUB")
-AddInfo("Game",           "Grow a Chicken Fighter")
+AddInfo("Game",           "Chicken Farm")
 AddInfo("Plates Grabbed", "0 / 20", true)
 AddInfo("Status",         "Operational")
 
