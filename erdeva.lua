@@ -1,4 +1,3 @@
--- [[ ERDEVA HUB v1.3 - FULL COMPLETED SCRIPT ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -29,13 +28,12 @@ local function tw(o, p, t)
     TweenService:Create(o, TweenInfo.new(t or 0.15), p):Play()
 end
 
--- SEMUA DEFAULT MATI (FALSE) - USER YANG MENENTUKAN
 local Flags = {
     AutoOpenEggs        = false,
     AutoGrabScraps      = false,
     AutoRecycleScrap    = false,
     AutoUpgradeRecycler = false,
-    ScrapCapacity       = 20,
+    ScrapCapacity       = 50,
     AutoRebirth         = false,
     AutoUpgradeCoop     = false,
     AutoUpgradeFeeder   = false,
@@ -75,10 +73,9 @@ local GuiCooldowns = {}
 local collectedScraps = 0
 local BlacklistedScraps = {}
 local CurrentTargetScrap = nil
-local LastPopupDismiss = 0
 
 local STATE_TIMEOUTS = {
-    [State.COLLECTING] = 8,
+    [State.COLLECTING] = 12,
     [State.RECYCLING]  = 4,
     [State.UPGRADING]  = 4,
     [State.TOWER]      = 120,
@@ -174,7 +171,7 @@ local function WalkTo(targetPos, timeout, stopDist)
     local root = GetRoot()
     if not hum or not root then return false end
     stopDist = stopDist or 2.8
-    timeout = timeout or 3.0
+    timeout = timeout or 2.5
     local t0 = tick()
     local char = GetChar()
 
@@ -206,13 +203,16 @@ local function LockRecycler()
 end
 
 local function ClickGuiButton(btn)
-    if not btn or not btn.Parent or not btn.Visible then return false end
+    if not btn or not btn.Parent then return false end
     pcall(function()
         if getconnections then
             for _, c in ipairs(getconnections(btn.MouseButton1Click)) do c:Fire() end
             for _, c in ipairs(getconnections(btn.Activated)) do c:Fire() end
         end
-        if firesignal then firesignal(btn.MouseButton1Click) end
+        if firesignal then 
+            firesignal(btn.MouseButton1Click)
+            firesignal(btn.Activated)
+        end
     end)
     return true
 end
@@ -232,39 +232,54 @@ local function IsVisibleGui(obj)
     return true
 end
 
-local function IsPopupButton(btn)
-    local text = ButtonText(btn)
-    if text:find("auto") or text:find("tower") or text:find("rebirth") then return false end
-    local isClose = text:find("close") or text:find("cancel") or text:find("no thanks") or text:find("nothanks") or text:find("skip") or text:find("later")
-    if not isClose then return false end
-    local parent = btn.Parent
-    while parent and parent ~= player:FindFirstChild("PlayerGui") do
-        local n = parent.Name:lower()
-        if n:find("popup") or n:find("modal") or n:find("notice") or n:find("prompt") or n:find("reward") or n:find("offer") or n:find("shop") then
-            return true
-        end
-        parent = parent.Parent
-    end
-    return text:find("no thanks") or text:find("skip") or text:find("later")
-end
-
+-- TUTUP POPUP NOT ENOUGH CASH & POPUP LAINNYA
 local function DismissAllPopups()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
     local clicked = false
-    for _, b in ipairs(pg:GetDescendants()) do
-        if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) and IsPopupButton(b) then
-            clicked = ClickGuiButton(b) or clicked
+    
+    for _, gui in ipairs(pg:GetDescendants()) do
+        if gui:IsA("GuiObject") and IsVisibleGui(gui) then
+            local name = gui.Name:lower()
+            local text = (gui:IsA("TextLabel") and gui.Text:lower()) or ""
+            
+            -- Jika terdeteksi kotak "Not Enough Cash"
+            if text:find("not enough cash") or text:find("not enough") or name:find("notenoughcash") then
+                local container = gui.Parent
+                while container and container ~= pg do
+                    for _, b in ipairs(container:GetDescendants()) do
+                        if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
+                            local btnTxt = ButtonText(b)
+                            if btnTxt:find("x") or btnTxt:find("close") or btnTxt:find("exit") or b.Name:lower() == "x" or b.Name:lower() == "close" or b.Name:lower() == "closebtn" then
+                                clicked = ClickGuiButton(b) or clicked
+                            end
+                        end
+                    end
+                    container = container.Parent
+                end
+            end
+            
+            -- Tombol X atau Close umum
+            if (gui:IsA("TextButton") or gui:IsA("ImageButton")) and (gui.Name:lower() == "x" or gui.Name:lower() == "close" or gui.Name:lower() == "closebutton") then
+                local parentName = gui.Parent and gui.Parent.Name:lower() or ""
+                if parentName:find("popup") or parentName:find("frame") or parentName:find("modal") or parentName:find("shop") or parentName:find("cash") then
+                    clicked = ClickGuiButton(gui) or clicked
+                end
+            end
         end
     end
     return clicked
 end
 
-local function SafeDismissPopups()
-    if tick() - LastPopupDismiss < 0.8 then return false end
-    LastPopupDismiss = tick()
-    return DismissAllPopups()
-end
+-- Thread mandiri untuk selalu menutup popup cash / robux agar tidak menghalangi
+task.spawn(function()
+    while IsRunning do
+        pcall(function()
+            DismissAllPopups()
+        end)
+        task.wait(0.2)
+    end
+end)
 
 local function TryClickGuiAction(actionName, patterns, cooldown)
     if not IsRunning or not CanRunAction("GUI_" .. actionName, cooldown or 1.0) then return false end
@@ -306,7 +321,7 @@ local function GetActualScrapCount()
         for _, lbl in ipairs(pg:GetDescendants()) do
             if lbl:IsA("TextLabel") and IsVisibleGui(lbl) then
                 local text = lbl.Text:lower()
-                if text:find("scrap") and not (text:find("level") or text:find("upgrade") or text:find("multiplier") or text:find("tier") or text:find("cost")) then
+                if text:find("scrap") and not (text:find("level") or text:find("upgrade") or text:find("multiplier") or text:find("tier") or text:find("cost") or text:find("price")) then
                     local cur, _ = text:match("(%d+)%s*/%s*(%d+)")
                     if cur then
                         return tonumber(cur), true
@@ -384,7 +399,7 @@ local function ExecutePadAction(actionName, keywords, guiPatterns, cooldown)
     local pad = FindPadByKeywords(keywords)
     if pad and pad.part and pad.part.Parent then
         FastTouch(pad.part)
-        if WalkTo(pad.part.Position, 2.5, 3.5) then
+        if WalkTo(pad.part.Position, 2.0, 3.5) then
             FastTouch(pad.part)
             if pad.prompt then
                 if pad.prompt:IsA("ProximityPrompt") then
@@ -404,7 +419,7 @@ local function ExecutePadAction(actionName, keywords, guiPatterns, cooldown)
     if guiPatterns then
         did = TryClickGuiAction(actionName, guiPatterns, cooldown or 2.0) or did
     end
-    SafeDismissPopups()
+    DismissAllPopups()
     return did
 end
 
@@ -465,7 +480,7 @@ end
 local function CleanupScrapBlacklist()
     local now = tick()
     for scrap, t in pairs(BlacklistedScraps) do
-        if typeof(scrap) ~= "Instance" or not scrap.Parent or now - t > 3.5 then
+        if typeof(scrap) ~= "Instance" or not scrap.Parent or now - t > 3.0 then
             BlacklistedScraps[scrap] = nil
         end
     end
@@ -497,7 +512,7 @@ local function TryCollectScrap(scrap)
     if not root then return false end
     
     FastTouch(scrap)
-    local reached = WalkTo(scrap.Position, 2.0, 3.0)
+    local reached = WalkTo(scrap.Position, 1.8, 2.5)
     FastTouch(scrap)
     TriggerNearbyPrompt("scrap", 10)
 
@@ -550,7 +565,7 @@ local function RecycleScrap()
     task.wait(0.25)
     collectedScraps = 0
     table.clear(BlacklistedScraps)
-    SafeDismissPopups()
+    DismissAllPopups()
     
     return true
 end
@@ -587,27 +602,28 @@ local function DoRebirth()
         CurrentTargetScrap = nil
         return true
     end
-    SafeDismissPopups()
+    DismissAllPopups()
     return false
 end
 
 local function RunUpgrades()
     local did = false
     if Flags.AutoBuyFeeders or Flags.AutoRebirth then
-        did = ExecutePadAction("BuyFeeder", { "buy feeder", "new feeder", "feeder", "purchase feeder", "unlock feeder", "add feeder" }, { "buy feeder", "new feeder" }, 2.0) or did
+        did = ExecutePadAction("BuyFeeder", { "buy feeder", "new feeder", "feeder", "purchase feeder", "unlock feeder", "add feeder" }, { "buy feeder", "new feeder" }, 3.0) or did
     end
     if Flags.AutoUpgradeFeeder or Flags.AutoRebirth then
-        did = ExecutePadAction("UpgradeFeeder", { "upgrade feeder", "feed speed", "feeder level", "feeder upgrade" }, { "upgrade feeder", "upgrade speed" }, 2.0) or did
+        did = ExecutePadAction("UpgradeFeeder", { "upgrade feeder", "feed speed", "feeder level", "feeder upgrade" }, { "upgrade feeder", "upgrade speed" }, 3.0) or did
     end
     if Flags.AutoUpgradeRecycler then
-        did = ExecutePadAction("UpgradeRecycler", { "upgrade recycler", "recycler speed", "recycler level" }, { "upgrade recycler" }, 2.5) or did
+        did = ExecutePadAction("UpgradeRecycler", { "upgrade recycler", "recycler speed", "recycler level" }, { "upgrade recycler" }, 3.0) or did
     end
     if Flags.AutoUpgradeCoop then
-        did = ExecutePadAction("UpgradeCoop", { "upgrade coop", "coop level", "expand coop" }, { "upgrade coop" }, 2.5) or did
+        did = ExecutePadAction("UpgradeCoop", { "upgrade coop", "coop level", "expand coop" }, { "upgrade coop" }, 3.0) or did
     end
     if Flags.AutoOpenEggs then
-        did = TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 1.5) or did
+        did = TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 2.0) or did
     end
+    DismissAllPopups()
     return did
 end
 
@@ -650,7 +666,6 @@ end
 
 -- Main Loop
 task.spawn(function()
-    local upgradeCounter = 0
     while IsRunning do
         pcall(function()
             RecoverIfStuck()
@@ -660,8 +675,6 @@ task.spawn(function()
                 task.wait(0.25)
                 return
             end
-            
-            if Flags.AutoNoThanks then SafeDismissPopups() end
             
             local root = GetRoot()
             local hum = GetHumanoid()
@@ -680,37 +693,35 @@ task.spawn(function()
             if CurrentState == State.COLLECTING then
                 local realCount, found = GetActualScrapCount()
                 local count = found and realCount or collectedScraps
-                local cap = tonumber(Flags.ScrapCapacity) or 20
+                local cap = tonumber(Flags.ScrapCapacity) or 50
                 
                 if Flags.AutoOpenEggs then
                     TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 2)
                 end
                 
-                -- HANYA RECYCLE JIKA SUDAH MENCAPAI CAPACITY
+                -- HANYA RECYCLE JIKA SUDAH MENCAPAI CAPACITY PENUH (MISAL: 50)
                 if Flags.AutoRecycleScrap and count >= cap then
                     SetState(State.RECYCLING)
                     return
                 end
                 
+                -- FOKUS AMBIL SCRAP SAMPAI PENUH, TIDAK AKAN PERGI KE FEEDER
                 if Flags.AutoGrabScraps then
                     local scrap = FindBestScrap()
                     if scrap then
                         TryCollectScrap(scrap)
                     else
-                        upgradeCounter = upgradeCounter + 1
-                        if upgradeCounter >= 5 then
-                            upgradeCounter = 0
-                            RunUpgrades()
-                        end
-                        task.wait(0.1)
+                        -- Jika scrap di tanah habis sementara, tunggu di tempat, JANGAN lari ke feeder
+                        task.wait(0.15)
                     end
                 else
                     RunUpgrades()
-                    task.wait(0.3)
+                    task.wait(0.4)
                 end
                 
             elseif CurrentState == State.RECYCLING then
                 RecycleScrap()
+                -- Setelah berhasil mendaur ulang & mendapat uang banyak, baru cek feeder & upgrade
                 SetState(State.UPGRADING)
                 
             elseif CurrentState == State.UPGRADING then
@@ -730,7 +741,7 @@ task.spawn(function()
                 SetState(State.COLLECTING)
             end
         end)
-        task.wait(0.04)
+        task.wait(0.03)
     end
 end)
 
@@ -766,7 +777,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v1.3</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v1.4</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -940,7 +951,7 @@ AddToggle(FarmPage, "Auto Open Eggs",        "AutoOpenEggs")
 AddToggle(FarmPage, "Auto Grab Scraps",      "AutoGrabScraps")
 AddToggle(FarmPage, "Auto Recycle Scrap",    "AutoRecycleScrap")
 AddToggle(FarmPage, "Auto Upgrade Recycler", "AutoUpgradeRecycler")
-AddSlider(FarmPage, "Scrap Capacity", 50, 20, "ScrapCapacity")
+AddSlider(FarmPage, "Scrap Capacity", 50, 50, "ScrapCapacity")
 
 AddToggle(PlotPage, "Auto Rebirth (Master)", "AutoRebirth")
 AddToggle(PlotPage, "Auto Buy Feeders",      "AutoBuyFeeders")
@@ -998,7 +1009,7 @@ local function AddInfo(k, v)
     r.Font = Enum.Font.GothamBold r.TextXAlignment = Enum.TextXAlignment.Right
 end
 AddInfo("Hub",    "ERDEVA HUB")
-AddInfo("Game",   "Chicken Farm")
+AddInfo("Game",   "Grow a Chicken Fighter")
 AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
