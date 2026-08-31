@@ -1,4 +1,4 @@
--- [[ ERDEVA HUB v1.8 - DIRECT ARENA NAVIGATION & SCRAP VACUUM ]]
+-- [[ ERDEVA HUB v2.0 - DEFINITIVE CHICKEN FARM AUTO REBIRTH ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -53,13 +53,12 @@ local Flags = {
     AutoBuyFeeders      = false,
     AutoStartTower      = false,
     TowerMinLevel       = 50,
-    AutoNoThanks        = false,
+    AutoNoThanks        = true,
     AutoStartChaos      = false,
 }
 
 local ToggleUpdaters = {}
 local CurrentBatchScraps = 0
-local ConsecutiveFails = 0
 
 local function GetChar() return player.Character end
 local function GetRoot()
@@ -76,30 +75,18 @@ local State = {
     COLLECTING = "COLLECTING",
     RECYCLING  = "RECYCLING",
     UPGRADING  = "UPGRADING",
-    TOWER      = "TOWER",
     REBIRTH    = "REBIRTH",
     WAITING    = "WAITING",
 }
 
 local CurrentState = State.IDLE
-local StateStartedAt = tick()
 local ActionCooldowns = {}
 local GuiCooldowns = {}
 local BlacklistedScraps = {}
 
-local STATE_TIMEOUTS = {
-    [State.COLLECTING] = 25,
-    [State.RECYCLING]  = 6,
-    [State.UPGRADING]  = 4,
-    [State.TOWER]      = 120,
-    [State.REBIRTH]    = 10,
-    [State.WAITING]    = 4,
-}
-
 local function SetState(newState)
     if CurrentState ~= newState then
         CurrentState = newState
-        StateStartedAt = tick()
     end
 end
 
@@ -124,7 +111,6 @@ end
 player.CharacterAdded:Connect(function(char)
     task.wait(0.5)
     CurrentBatchScraps = 0
-    ConsecutiveFails = 0
     if IsRunning then ApplyNoCollision(char) end
 end)
 ApplyNoCollision(GetChar())
@@ -207,60 +193,6 @@ local function WalkTo(targetPos, timeout, stopDist)
     return root and FlatDist(root.Position, targetPos) <= (stopDist + 2.5)
 end
 
--- POSISI BASE & ARENA
-local RECYCLER_POS = nil
-local ARENA_POS = nil
-
-local function LockRecycler()
-    local root = GetRoot()
-    if root then
-        RECYCLER_POS = root.Position
-        return true
-    end
-    return false
-end
-
-local function LockArena()
-    local root = GetRoot()
-    if root then
-        ARENA_POS = root.Position
-        return true
-    end
-    return false
-end
-
--- Cari Posisi Arena Otomatis jika belum di-lock
-local function GetArenaPosition()
-    if ARENA_POS then return ARENA_POS end
-    
-    local root = GetRoot()
-    if not root then return nil end
-    
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        local n = obj.Name:lower()
-        if (n:find("arena") or n:find("pen") or n:find("field") or n:find("chickenarena")) and obj:IsA("BasePart") then
-            local d = FlatDist(root.Position, obj.Position)
-            if d > 20 and d < 400 then
-                ARENA_POS = obj.Position
-                return ARENA_POS
-            end
-        end
-    end
-    
-    -- Fallback: Jika tidak ketemu nama arena, cari pusat lempengan scrap terjauh
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and (obj.Name:lower():find("scrap") or obj.Name:lower():find("plate")) then
-            local d = FlatDist(root.Position, obj.Position)
-            if d > 30 and d < 400 then
-                ARENA_POS = obj.Position
-                return ARENA_POS
-            end
-        end
-    end
-    
-    return nil
-end
-
 local function ClickGuiButton(btn)
     if not btn or not btn.Parent then return false end
     pcall(function()
@@ -291,7 +223,7 @@ local function IsVisibleGui(obj)
     return true
 end
 
--- AUTO CLOSE POPUP "NOT ENOUGH CASH" & SHOP
+-- TUTUP POPUP NOT ENOUGH CASH & ROBUR POPUPS
 local function DismissAllPopups()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
@@ -299,8 +231,8 @@ local function DismissAllPopups()
     
     for _, gui in ipairs(pg:GetDescendants()) do
         if gui:IsA("GuiObject") and IsVisibleGui(gui) then
-            local name = gui.Name:lower()
             local text = (gui:IsA("TextLabel") and gui.Text:lower()) or ""
+            local name = gui.Name:lower()
             
             if text:find("not enough cash") or text:find("not enough") or name:find("notenoughcash") then
                 local container = gui.Parent
@@ -308,7 +240,7 @@ local function DismissAllPopups()
                     for _, b in ipairs(container:GetDescendants()) do
                         if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
                             local btnTxt = ButtonText(b)
-                            if btnTxt:find("x") or btnTxt:find("close") or btnTxt:find("exit") or b.Name:lower() == "x" or b.Name:lower() == "close" or b.Name:lower() == "closebtn" then
+                            if btnTxt:find("x") or btnTxt:find("close") or b.Name:lower() == "x" or b.Name:lower() == "close" then
                                 clicked = ClickGuiButton(b) or clicked
                             end
                         end
@@ -317,9 +249,9 @@ local function DismissAllPopups()
                 end
             end
             
-            if (gui:IsA("TextButton") or gui:IsA("ImageButton")) and (gui.Name:lower() == "x" or gui.Name:lower() == "close" or gui.Name:lower() == "closebutton") then
-                local parentName = gui.Parent and gui.Parent.Name:lower() or ""
-                if parentName:find("popup") or parentName:find("frame") or parentName:find("modal") or parentName:find("shop") or parentName:find("cash") then
+            if (gui:IsA("TextButton") or gui:IsA("ImageButton")) and (gui.Name:lower() == "x" or gui.Name:lower() == "close") then
+                local pName = gui.Parent and gui.Parent.Name:lower() or ""
+                if pName:find("popup") or pName:find("frame") or pName:find("modal") or pName:find("shop") or pName:find("cash") then
                     clicked = ClickGuiButton(gui) or clicked
                 end
             end
@@ -330,9 +262,7 @@ end
 
 task.spawn(function()
     while IsRunning do
-        pcall(function()
-            DismissAllPopups()
-        end)
+        pcall(function() DismissAllPopups() end)
         task.wait(0.2)
     end
 end)
@@ -358,8 +288,8 @@ local function TryClickGuiAction(actionName, patterns, cooldown)
     return false
 end
 
--- DETEKSI PLAT BESI SCRAP ASLI DI ARENA
-local function IsGroundScrap(obj)
+-- DETEKSI HANYA LEMPENGAN PLAT ASLI DI ARENA (BUKAN BANGUNAN BASE)
+local function IsRealScrap(obj)
     if not obj:IsA("BasePart") or not obj.Parent then return false end
     
     local char = GetChar()
@@ -369,29 +299,25 @@ local function IsGroundScrap(obj)
     
     local n = obj.Name:lower()
     local pn = obj.Parent.Name:lower()
+    local ppn = (obj.Parent.Parent and obj.Parent.Parent.Name:lower()) or ""
     
-    -- Jangan deteksi bagian base/plot
-    if n:find("fence") or n:find("wall") or n:find("floor") or n:find("baseplate") or n:find("terrain") or n:find("spawn") then
+    -- Filter bangunan/pad base
+    if n:find("fence") or n:find("wall") or n:find("floor") or n:find("base") or n:find("spawn") or n:find("grass") or n:find("terrain") then
         return false
     end
-    if n:find("recycler") or n:find("feeder") or n:find("coop") or n:find("incubator") or n:find("shop") or n:find("button") then
+    if n:find("recycler") or n:find("feeder") or n:find("coop") or n:find("incubator") or n:find("shop") or n:find("pad") or n:find("button") then
         return false
     end
     if pn:find("recycler") or pn:find("feeder") or pn:find("coop") or pn:find("incubator") or pn:find("shop") or pn:find("plot") then
         return false
     end
-    
-    -- Deteksi nama lempengan
-    if n:find("scrap") or n:find("plate") or n:find("drop") or n:find("trash") or n:find("metal") or pn:find("scrap") or pn:find("plate") or pn:find("drop") then
-        return true
+    if ppn:find("plot") or ppn:find("base") or ppn:find("feeder") or ppn:find("recycler") then
+        return false
     end
     
-    -- Deteksi bentuk plat jika berada di area arena (> 25 studs dari base)
-    local root = GetRoot()
-    if root and FlatDist(root.Position, obj.Position) > 20 then
-        if obj.Size.Y <= 1.2 and obj.Size.X >= 0.7 and obj.Size.Z >= 0.7 and obj.Size.X <= 6 and obj.Size.Z <= 6 then
-            return true
-        end
+    -- Lempengan plat asli
+    if n:find("scrap") or n:find("plate") or n:find("drop") or n:find("trash") or n:find("sheet") or n:find("debris") or pn:find("scrap") or pn:find("plate") or pn:find("drop") or pn:find("drops") then
+        return true
     end
     
     return false
@@ -406,17 +332,17 @@ local function CleanupScrapBlacklist()
     end
 end
 
--- Cari Plat Besi di Arena
-local function FindBestScrap()
+-- CARI PLAT SCRAP TERDEKAT DI ARENA
+local function FindNearestArenaScrap()
     CleanupScrapBlacklist()
     local root = GetRoot()
     if not root then return nil end
     local best, bestDist = nil, 9999
     
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if IsGroundScrap(obj) and not BlacklistedScraps[obj] then
+        if IsRealScrap(obj) and not BlacklistedScraps[obj] then
             local d = FlatDist(root.Position, obj.Position)
-            if d < 600 and d < bestDist then
+            if d < 800 and d < bestDist then
                 best = obj
                 bestDist = d
             end
@@ -425,35 +351,32 @@ local function FindBestScrap()
     return best
 end
 
--- Ambil Plat
-local function TryCollectScrap(scrap)
-    if not scrap or not scrap.Parent or not IsGroundScrap(scrap) then return false end
-    
+-- AMBIL LEMPENGAN PLAT
+local function CollectScrapPlate(scrap)
+    if not scrap or not scrap.Parent then return false end
     local root = GetRoot()
     if not root then return false end
     
     FastTouch(scrap)
-    local reached = WalkTo(scrap.Position, 2.0, 2.5)
+    WalkTo(scrap.Position, 2.0, 2.5)
     FastTouch(scrap)
     TriggerNearbyPrompt("scrap", 10)
 
-    local disappeared = not scrap.Parent
-    if disappeared or reached then
+    if not scrap.Parent then
         CurrentBatchScraps = CurrentBatchScraps + 1
-        ConsecutiveFails = 0
         BlacklistedScraps[scrap] = nil
         return true
     else
-        ConsecutiveFails = ConsecutiveFails + 1
         BlacklistedScraps[scrap] = tick()
         return false
     end
 end
 
-local function FindPadByKeywords(keywords)
+-- CARI PAD RECYCLER & FEEDER DI BASE
+local function FindBasePad(keywords)
     local root = GetRoot()
     if not root then return nil end
-    local bestObj, bestDist = nil, 9999
+    local bestPart, bestPrompt, bestDist = nil, nil, 9999
     
     for _, obj in ipairs(workspace:GetDescendants()) do
         local targetPart, prompt = nil, nil
@@ -499,162 +422,138 @@ local function FindPadByKeywords(keywords)
             local d = (root.Position - targetPart.Position).Magnitude
             if d < 300 and d < bestDist then
                 bestDist = d
-                bestObj = { part = targetPart, prompt = prompt }
+                bestPart = targetPart
+                bestPrompt = prompt
             end
         end
     end
-    return bestObj
+    
+    if bestPart then
+        return { part = bestPart, prompt = bestPrompt }
+    end
+    return nil
 end
 
-local function ExecutePadAction(actionName, keywords, guiPatterns, cooldown)
+local function ExecuteBasePad(actionName, keywords, guiPatterns, cooldown)
     if not CanRunAction(actionName, cooldown or 2.0) then return false end
-    local did = false
-    local pad = FindPadByKeywords(keywords)
-    if pad and pad.part and pad.part.Parent then
+    local pad = FindBasePad(keywords)
+    if pad and pad.part then
         FastTouch(pad.part)
-        if WalkTo(pad.part.Position, 2.0, 3.5) then
+        if WalkTo(pad.part.Position, 2.5, 3.5) then
             FastTouch(pad.part)
-            if pad.prompt then
-                if pad.prompt:IsA("ProximityPrompt") then
-                    did = TriggerPrompt(pad.prompt) or did
-                elseif pad.prompt:IsA("ClickDetector") and fireclickdetector then
-                    pcall(function() fireclickdetector(pad.prompt) end)
-                    did = true
-                end
+            if pad.prompt and pad.prompt:IsA("ProximityPrompt") then
+                TriggerPrompt(pad.prompt)
+            elseif pad.prompt and pad.prompt:IsA("ClickDetector") and fireclickdetector then
+                pcall(function() fireclickdetector(pad.prompt) end)
             else
                 for _, kw in ipairs(keywords) do
-                    did = TriggerNearbyPrompt(kw, 12) or did
-                    if did then break end
+                    TriggerNearbyPrompt(kw, 12)
                 end
             end
         end
     end
     if guiPatterns then
-        did = TryClickGuiAction(actionName, guiPatterns, cooldown or 2.0) or did
+        TryClickGuiAction(actionName, guiPatterns, cooldown or 2.0)
     end
     DismissAllPopups()
-    return did
+    return true
 end
 
-local function RecycleScrap()
-    local recyclerPos = RECYCLER_POS
-    local recyclerPad = nil
-    if not recyclerPos then
-        recyclerPad = FindPadByKeywords({ "recycle", "recycler", "sell scrap", "convert" })
-        recyclerPos = recyclerPad and recyclerPad.part and recyclerPad.part.Position or nil
-    end
-    
-    if not recyclerPos then 
-        CurrentBatchScraps = 0
-        return false 
-    end
-
+-- RECYCLE SEMUA SCRAP DI BASE
+local function DoRecycleAtBase()
     if not CanRunAction("RecycleScrap", 1.5) then return false end
     
-    if recyclerPad and recyclerPad.part then
-        FastTouch(recyclerPad.part)
-    end
-    
-    WalkTo(recyclerPos, 4.0, 3.2)
-    
-    if recyclerPad and recyclerPad.part then
-        FastTouch(recyclerPad.part)
-    end
-    
-    if recyclerPad and recyclerPad.prompt and recyclerPad.prompt:IsA("ProximityPrompt") then
-        TriggerPrompt(recyclerPad.prompt)
-    else
-        TriggerNearbyPrompt("recycle", 14)
+    local pad = FindBasePad({ "recycler", "recycle", "sell scrap", "convert" })
+    if pad and pad.part then
+        FastTouch(pad.part)
+        WalkTo(pad.part.Position, 4.0, 3.2)
+        FastTouch(pad.part)
+        if pad.prompt and pad.prompt:IsA("ProximityPrompt") then
+            TriggerPrompt(pad.prompt)
+        else
+            TriggerNearbyPrompt("recycle", 14)
+        end
     end
     
     TryClickGuiAction("RecycleScrap", { "recycle", "sell scrap", "convert", "empty", "deposit" }, 1.0)
     
     task.wait(0.3)
     CurrentBatchScraps = 0
-    ConsecutiveFails = 0
     table.clear(BlacklistedScraps)
     DismissAllPopups()
-    
     return true
 end
 
-local function RebirthAvailable()
+-- BELI & UPGRADE FEEDER
+local function DoUpgrades()
+    if Flags.AutoBuyFeeders or Flags.AutoRebirth then
+        ExecuteBasePad("BuyFeeder", { "buy feeder", "new feeder", "feeder", "purchase feeder", "unlock feeder", "add feeder" }, { "buy feeder", "new feeder" }, 2.5)
+    end
+    if Flags.AutoUpgradeFeeder or Flags.AutoRebirth then
+        ExecuteBasePad("UpgradeFeeder", { "upgrade feeder", "feed speed", "feeder level", "feeder upgrade" }, { "upgrade feeder", "upgrade speed" }, 2.5)
+    end
+    if Flags.AutoUpgradeRecycler then
+        ExecuteBasePad("UpgradeRecycler", { "upgrade recycler", "recycler speed", "recycler level" }, { "upgrade recycler" }, 2.5)
+    end
+    if Flags.AutoUpgradeCoop then
+        ExecuteBasePad("UpgradeCoop", { "upgrade coop", "coop level", "expand coop" }, { "upgrade coop" }, 2.5)
+    end
+    if Flags.AutoOpenEggs then
+        TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 2.0)
+    end
+    DismissAllPopups()
+end
+
+-- REBIRTH SYSTEM
+local function CheckAndDoRebirth()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
+    
+    local ready = false
     for _, b in ipairs(pg:GetDescendants()) do
         if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
             local text = ButtonText(b)
-            local looksReady = text:find("claim") or text:find("available") or text:find("ready")
-                or text:find("do rebirth") or text:find("rebirth")
-            local blocked = text:find("auto") or text:find("master") or text:find("locked")
-                or text:find("require") or text:find("need")
-            if looksReady and text:find("rebirth") and not blocked then
-                return true
+            if text:find("rebirth") and (text:find("ready") or text:find("claim") or text:find("available") or text:find("do rebirth") or b.Name:lower() == "rebirth") then
+                ready = true
+                break
             end
+        end
+    end
+    
+    if ready and CanRunAction("Rebirth", 5) then
+        TryClickGuiAction("RebirthOpen", { "rebirth" }, 1.5)
+        task.wait(0.3)
+        local ok = TryClickGuiAction("RebirthConfirm", { "confirm", "yes", "do rebirth", "claim rebirth", "rebirth" }, 1.5)
+        if ok then
+            task.wait(1.5)
+            CurrentBatchScraps = 0
+            table.clear(BlacklistedScraps)
+            table.clear(ActionCooldowns)
+            return true
         end
     end
     return false
 end
 
-local function DoRebirth()
-    if not CanRunAction("Rebirth", 5) then return false end
-    if not RebirthAvailable() then return false end
-    TryClickGuiAction("RebirthOpen", { "rebirth" }, 1.5)
-    task.wait(0.25)
-    local ok = TryClickGuiAction("RebirthConfirm", { "confirm", "yes", "do rebirth", "claim rebirth" }, 1.5)
-    if ok then
-        task.wait(1.5)
-        CurrentBatchScraps = 0
-        table.clear(BlacklistedScraps)
-        table.clear(ActionCooldowns)
-        return true
+-- CARI PUSAT ARENA JIKA TIDAK ADA SCRAP TERDEKAT
+local function GetArenaCenter()
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        local n = obj.Name:lower()
+        if (n:find("arena") or n:find("pen") or n:find("chickenarena")) and obj:IsA("BasePart") then
+            return obj.Position
+        end
     end
-    DismissAllPopups()
-    return false
+    return nil
 end
 
-local function RunUpgrades()
-    local did = false
-    if Flags.AutoBuyFeeders or Flags.AutoRebirth then
-        did = ExecutePadAction("BuyFeeder", { "buy feeder", "new feeder", "feeder", "purchase feeder", "unlock feeder", "add feeder" }, { "buy feeder", "new feeder" }, 3.0) or did
-    end
-    if Flags.AutoUpgradeFeeder or Flags.AutoRebirth then
-        did = ExecutePadAction("UpgradeFeeder", { "upgrade feeder", "feed speed", "feeder level", "feeder upgrade" }, { "upgrade feeder", "upgrade speed" }, 3.0) or did
-    end
-    if Flags.AutoUpgradeRecycler then
-        did = ExecutePadAction("UpgradeRecycler", { "upgrade recycler", "recycler speed", "recycler level" }, { "upgrade recycler" }, 3.0) or did
-    end
-    if Flags.AutoUpgradeCoop then
-        did = ExecutePadAction("UpgradeCoop", { "upgrade coop", "coop level", "expand coop" }, { "upgrade coop" }, 3.0) or did
-    end
-    if Flags.AutoOpenEggs then
-        did = TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 2.0) or did
-    end
-    DismissAllPopups()
-    return did
-end
-
-local function ShouldRunAutomation()
-    return Flags.AutoRebirth or Flags.AutoGrabScraps or Flags.AutoRecycleScrap or Flags.AutoBuyFeeders
-        or Flags.AutoUpgradeFeeder or Flags.AutoUpgradeRecycler or Flags.AutoUpgradeCoop
-        or Flags.AutoStartTower or Flags.AutoOpenEggs or Flags.AutoStartChaos
-end
-
-local function RecoverIfStuck()
-    local timeout = STATE_TIMEOUTS[CurrentState]
-    if not timeout or tick() - StateStartedAt <= timeout then return end
-    SetState(State.COLLECTING)
-end
-
--- Main Loop: Lari ke Arena -> Ambil Plat -> Pulang Recycle -> Balik Lagi ke Arena
+-- LOOP UTAMA: FOKUS ARENA ➔ RECYCLE ➔ FEEDER ➔ REBIRTH
 task.spawn(function()
     while IsRunning do
         pcall(function()
-            RecoverIfStuck()
-            
-            if not ShouldRunAutomation() then
+            local active = Flags.AutoRebirth or Flags.AutoGrabScraps or Flags.AutoRecycleScrap
+            if not active then
                 SetState(State.IDLE)
-                task.wait(0.25)
+                task.wait(0.3)
                 return
             end
             
@@ -666,60 +565,43 @@ task.spawn(function()
                 return
             end
             
-            if CurrentState == State.IDLE or CurrentState == State.WAITING then
-                SetState(State.COLLECTING)
-            end
+            local targetCap = tonumber(Flags.ScrapCapacity) or 20
             
-            if CurrentState == State.COLLECTING then
-                local targetCap = tonumber(Flags.ScrapCapacity) or 20
-                
-                if Flags.AutoOpenEggs then
-                    TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 2)
-                end
-                
-                -- RECYCLE JIKA SUDAH DAPAT 20 ATAU TANGAN PENUH
-                if Flags.AutoRecycleScrap and (CurrentBatchScraps >= targetCap or (CurrentBatchScraps > 0 and ConsecutiveFails >= 4)) then
-                    SetState(State.RECYCLING)
-                    return
-                end
-                
-                -- AMBIL PLAT DI ARENA
-                if Flags.AutoGrabScraps then
-                    local scrap = FindBestScrap()
-                    if scrap then
-                        TryCollectScrap(scrap)
+            -- SIKLUS 1: AMBIL PLAT DI ARENA SAMPAI PENUH (20)
+            if CurrentBatchScraps < targetCap then
+                SetState(State.COLLECTING)
+                local scrap = FindNearestArenaScrap()
+                if scrap then
+                    CollectScrapPlate(scrap)
+                else
+                    -- Jika sedang di Base, langsung lari masuk ke dalam Arena!
+                    local arenaPos = GetArenaCenter()
+                    if arenaPos and FlatDist(root.Position, arenaPos) > 20 then
+                        WalkTo(arenaPos, 3.5, 6.0)
                     else
-                        -- Jika belum melihat scrap dari posisi sekarang, lari langsung ke dalam Arena!
-                        local arenaPos = GetArenaPosition()
-                        if arenaPos and FlatDist(root.Position, arenaPos) > 15 then
-                            WalkTo(arenaPos, 3.0, 5.0)
-                        else
-                            task.wait(0.2)
-                        end
+                        task.wait(0.15)
                     end
-                else
-                    RunUpgrades()
-                    task.wait(0.4)
                 end
+            else
+                -- SIKLUS 2: RECYCLE DI BASE
+                SetState(State.RECYCLING)
+                DoRecycleAtBase()
                 
-            elseif CurrentState == State.RECYCLING then
-                RecycleScrap()
+                -- SIKLUS 3: UPGRADE FEEDER
                 SetState(State.UPGRADING)
+                DoUpgrades()
                 
-            elseif CurrentState == State.UPGRADING then
-                RunUpgrades()
-                if Flags.AutoRebirth and RebirthAvailable() then
+                -- SIKLUS 4: CEK REBIRTH
+                if Flags.AutoRebirth then
                     SetState(State.REBIRTH)
-                else
-                    SetState(State.COLLECTING)
+                    CheckAndDoRebirth()
                 end
                 
-            elseif CurrentState == State.REBIRTH then
-                DoRebirth()
+                -- Selesai, kembali ambil scrap di arena!
                 SetState(State.COLLECTING)
             end
         end)
-        task.wait(0.03)
+        task.wait(0.02)
     end
 end)
 
@@ -755,7 +637,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v1.8</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.0 (Master Auto)</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -936,54 +818,6 @@ AddToggle(PlotPage, "Auto Buy Feeders",      "AutoBuyFeeders")
 AddToggle(PlotPage, "Auto Upgrade Feeder",   "AutoUpgradeFeeder")
 AddToggle(PlotPage, "Auto Upgrade Coop",     "AutoUpgradeCoop")
 
-do
-    local wrapper = Instance.new("Frame", PlotPage)
-    wrapper.Size = UDim2.new(1,0,0,88)
-    wrapper.BackgroundColor3 = Color3.fromRGB(18,18,18)
-    Instance.new("UICorner", wrapper).CornerRadius = UDim.new(0,6)
-    local s = Instance.new("UIStroke", wrapper) s.Color=C.Red s.Thickness=1
-    
-    local lockBtn = Instance.new("TextButton", wrapper)
-    lockBtn.Size = UDim2.new(1,-8,0,26) lockBtn.Position = UDim2.fromOffset(4,6)
-    lockBtn.BackgroundColor3 = Color3.fromRGB(180,30,30)
-    lockBtn.Text = "[LOCK] Set Recycler Pad Position"
-    lockBtn.TextColor3 = Color3.fromRGB(255,255,255)
-    lockBtn.TextSize = 10 lockBtn.Font = Enum.Font.GothamBold
-    Instance.new("UICorner", lockBtn).CornerRadius = UDim.new(0,5)
-    lockBtn.MouseButton1Click:Connect(function()
-        if LockRecycler() then
-            lockBtn.Text = "[OK] Recycler Locked"
-            lockBtn.BackgroundColor3 = Color3.fromRGB(20,120,20)
-            task.delay(2, function()
-                if lockBtn and lockBtn.Parent then
-                    lockBtn.Text = "[LOCK] Set Recycler Pad Position"
-                    lockBtn.BackgroundColor3 = Color3.fromRGB(180,30,30)
-                end
-            end)
-        end
-    end)
-
-    local arenaBtn = Instance.new("TextButton", wrapper)
-    arenaBtn.Size = UDim2.new(1,-8,0,26) arenaBtn.Position = UDim2.fromOffset(4,36)
-    arenaBtn.BackgroundColor3 = Color3.fromRGB(30,100,180)
-    arenaBtn.Text = "[LOCK] Set Arena Center Position (Stand in Arena)"
-    arenaBtn.TextColor3 = Color3.fromRGB(255,255,255)
-    arenaBtn.TextSize = 10 arenaBtn.Font = Enum.Font.GothamBold
-    Instance.new("UICorner", arenaBtn).CornerRadius = UDim.new(0,5)
-    arenaBtn.MouseButton1Click:Connect(function()
-        if LockArena() then
-            arenaBtn.Text = "[OK] Arena Position Locked"
-            arenaBtn.BackgroundColor3 = Color3.fromRGB(20,120,20)
-            task.delay(2, function()
-                if arenaBtn and arenaBtn.Parent then
-                    arenaBtn.Text = "[LOCK] Set Arena Center Position (Stand in Arena)"
-                    arenaBtn.BackgroundColor3 = Color3.fromRGB(30,100,180)
-                end
-            end)
-        end
-    end)
-end
-
 AddToggle(BattlePage, "Auto Start Tower",  "AutoStartTower")
 AddSlider(BattlePage, "Min Chicken Lv for Tower", 100, 50, "TowerMinLevel")
 AddToggle(BattlePage, "Auto No Thanks",    "AutoNoThanks")
@@ -1006,7 +840,7 @@ local function AddInfo(k, v, isLive)
 end
 
 AddInfo("Hub",            "ERDEVA HUB")
-AddInfo("Game",           "Chicken oke Farm")
+AddInfo("Game",           "Chicken Farm")
 AddInfo("Plates Grabbed", "0 / 20", true)
 AddInfo("Status",         "Operational")
 
@@ -1019,4 +853,4 @@ task.spawn(function()
     end
 end)
 
-SetTab("Farm")
+SetTab("Plot")
