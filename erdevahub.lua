@@ -564,7 +564,7 @@ task.spawn(function()
                             if CanRunAction("SendChickenTower", 5.0) then
                                 ClickGuiButton(b)
                                 ChickenInTower = true
-                                Notify("ERDEVA HUB", "Ayam dikirim ke Tower!", 2.5)
+                                Notify("ERDEVA HUB", "Ayam dikirim ke Tower! Menunggu K.O...", 2.5)
                                 break
                             end
                         end
