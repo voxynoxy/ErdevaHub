@@ -1,4 +1,4 @@
--- [[ ERDEVA HUB v2.4 - PERFECTION & FIXED COUNTER RESET ]]
+-- [[ ERDEVA HUB v2.5 - RECYCLER POSITION LOCK & ARRIVAL CONFIRMATION ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -14,7 +14,7 @@ pcall(function()
 end)
 
 local IsRunning = true
-local W, H = 420, 250
+local W, H = 420, 260
 
 local C = {
     Bg   = Color3.fromRGB(14, 14, 14),
@@ -57,6 +57,7 @@ local Flags = {
     AutoStartChaos      = false,
 }
 
+local LOCKED_RECYCLER_POS = nil
 local ToggleUpdaters = {}
 local CurrentBatchScraps = 0
 
@@ -70,7 +71,7 @@ local function GetHumanoid()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
--- DETEKSI LEVEL AYAM (YB LV.47)
+-- DETEKSI LEVEL AYAM
 local function GetHighestChickenLevel()
     local highest = 0
     local pg = player:FindFirstChild("PlayerGui")
@@ -192,7 +193,7 @@ local function WalkTo(targetPos, timeout, stopDist)
     local root = GetRoot()
     if not hum or not root then return false end
     stopDist = stopDist or 2.5
-    timeout = timeout or 3.5
+    timeout = timeout or 4.5
     local t0 = tick()
     local char = GetChar()
 
@@ -308,7 +309,7 @@ local function TryClickGuiAction(actionName, patterns, cooldown)
     return false
 end
 
--- DETEKSI PLAT SCRAP ASLI DI ARENA
+-- DETEKSI PLAT DI ARENA
 local function IsRealScrap(obj)
     if not obj:IsA("BasePart") or not obj.Parent then return false end
     
@@ -472,27 +473,42 @@ local function ExecuteBasePad(actionName, keywords, guiPatterns, cooldown)
     return true
 end
 
--- RECYCLE (SATU-SATUNYA TEMPAT RESET COUNTER KE 0)
+-- RECYCLE DI BASE (DENGAN LOCK POSISI & WAJIB SAMPAI DULU BARU RESET 0)
 local function DoRecycleAtBase()
-    if not CanRunAction("RecycleScrap", 1.5) then return false end
+    if not CanRunAction("RecycleScrap", 2.0) then return false end
     
-    local pad = FindBasePad({ "recycler", "recycle", "sell scrap", "convert" })
-    if pad and pad.part then
-        FastTouch(pad.part)
-        WalkTo(pad.part.Position, 4.0, 3.2)
-        FastTouch(pad.part)
-        if pad.prompt and pad.prompt:IsA("ProximityPrompt") then
-            TriggerPrompt(pad.prompt)
-        else
-            TriggerNearbyPrompt("recycle", 14)
+    local targetPos = LOCKED_RECYCLER_POS
+    local pad = nil
+    
+    if not targetPos then
+        pad = FindBasePad({ "recycler", "recycle", "sell scrap", "convert" })
+        if pad and pad.part then
+            targetPos = pad.part.Position
         end
     end
     
+    if not targetPos then
+        return false
+    end
+    
+    -- JALAN SAMPAI BENAR-BENAR MENGINJAK RECYCLER PAD
+    local reached = WalkTo(targetPos, 5.0, 2.8)
+    
+    if pad and pad.part then
+        FastTouch(pad.part)
+    end
+    
+    TriggerNearbyPrompt("recycle", 14)
     TryClickGuiAction("RecycleScrap", { "recycle", "sell scrap", "convert", "empty", "deposit" }, 1.0)
     
     task.wait(0.4)
-    CurrentBatchScraps = 0
-    table.clear(BlacklistedScraps)
+    
+    local root = GetRoot()
+    if root and FlatDist(root.Position, targetPos) <= 4.0 then
+        CurrentBatchScraps = 0
+        table.clear(BlacklistedScraps)
+    end
+    
     DismissAllPopups()
     return true
 end
@@ -561,7 +577,7 @@ local function RunTowerBattle()
     return true
 end
 
--- REBIRTH SYSTEM (HANYA KLIK JIKA BUKAN 'NOT YET')
+-- REBIRTH SYSTEM
 local function CheckAndDoRebirth()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
@@ -572,7 +588,7 @@ local function CheckAndDoRebirth()
                 if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
                     local text = ButtonText(b)
                     if text:find("not yet") or text:find("milestones") or text:find("x") or text:find("close") then
-                        -- Abaikan tombol NOT YET & close
+                        -- Abaikan NOT YET
                     elseif (text:find("rebirth") or text:find("claim") or text:find("yes")) and CanRunAction("ExecuteRebirth", 5) then
                         ClickGuiButton(b)
                         task.wait(0.3)
@@ -633,7 +649,7 @@ task.spawn(function()
             
             local targetCap = tonumber(Flags.ScrapCapacity) or 20
             
-            -- 3. SIKLUS AMBIL PLAT DI ARENA (ANGKA PASTI NAIK TERUS)
+            -- 3. SIKLUS AMBIL PLAT DI ARENA
             if CurrentBatchScraps < targetCap then
                 SetState(State.COLLECTING)
                 local scrap = FindNearestArenaScrap()
@@ -648,16 +664,19 @@ task.spawn(function()
                     end
                 end
             else
-                -- 4. RECYCLE DI BASE & UPGRADE
+                -- 4. JALAN PULANG KE RECYCLER DI BASE
                 SetState(State.RECYCLING)
                 DoRecycleAtBase()
                 
-                SetState(State.UPGRADING)
-                DoUpgrades()
-                
-                if Flags.AutoRebirth then
-                    SetState(State.REBIRTH)
-                    CheckAndDoRebirth()
+                -- 5. UPGRADE FEEDER SETELAH SETOR
+                if CurrentBatchScraps == 0 then
+                    SetState(State.UPGRADING)
+                    DoUpgrades()
+                    
+                    if Flags.AutoRebirth then
+                        SetState(State.REBIRTH)
+                        CheckAndDoRebirth()
+                    end
                 end
                 
                 SetState(State.COLLECTING)
@@ -699,7 +718,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.4</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.5</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -826,6 +845,19 @@ local function AddToggle(parent, label, key)
     end)
 end
 
+local function AddButton(parent, label, callback)
+    local b = Instance.new("TextButton", parent)
+    b.Size = UDim2.new(1,0,0,30) b.BackgroundColor3 = Color3.fromRGB(35,35,35)
+    b.Text = label b.TextColor3 = C.Txt b.TextSize = 11 b.Font = Enum.Font.GothamBold
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0,6)
+    b.MouseButton1Click:Connect(function()
+        tw(b, {BackgroundColor3 = C.Red}, 0.1)
+        task.delay(0.2, function() tw(b, {BackgroundColor3 = Color3.fromRGB(35,35,35)}, 0.15) end)
+        if callback then callback(b) end
+    end)
+    return b
+end
+
 local function AddSlider(parent, label, maxV, defV, key)
     local f = Instance.new("Frame", parent)
     f.Size = UDim2.new(1,0,0,36) f.BackgroundColor3 = C.Card
@@ -876,6 +908,15 @@ AddToggle(FarmPage, "Auto Upgrade Recycler", "AutoUpgradeRecycler")
 AddSlider(FarmPage, "Scrap Capacity", 50, 20, "ScrapCapacity")
 
 AddToggle(PlotPage, "Auto Rebirth (Master)", "AutoRebirth")
+AddButton(PlotPage, "[LOCK] Set Recycler Pad", function(btn)
+    local root = GetRoot()
+    if root then
+        LOCKED_RECYCLER_POS = root.Position
+        btn.Text = "✓ Recycler Pad Locked!"
+        Notify("ERDEVA HUB", "Recycler Pad successfully locked at current position!", 3.5)
+        task.delay(2.5, function() btn.Text = "[LOCK] Set Recycler Pad" end)
+    end
+end)
 AddToggle(PlotPage, "Auto Buy Feeders",      "AutoBuyFeeders")
 AddToggle(PlotPage, "Auto Upgrade Feeder",   "AutoUpgradeFeeder")
 AddToggle(PlotPage, "Auto Upgrade Coop",     "AutoUpgradeCoop")
