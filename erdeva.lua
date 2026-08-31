@@ -4,6 +4,7 @@ local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local StarterGui = game:GetService("StarterGui")
 local RunService = game:GetService("RunService")
+local MarketplaceService = game:GetService("MarketplaceService")
 
 local player = Players.LocalPlayer
 
@@ -31,7 +32,7 @@ local function Notify(title, desc, duration)
     end)
 end
 
-Notify("ERDEVA HUB", "v2.5 Loaded! Ready to farm.", 4.5)
+Notify("ERDEVA HUB", "Script Loaded! Ready to farm.", 4.5)
 
 local Flags = {
     AutoOpenEggs        = false,
@@ -594,8 +595,16 @@ MiniImage.Size = UDim2.fromOffset(36, 36)
 MiniImage.AnchorPoint = Vector2.new(0.5, 0.5)
 MiniImage.Position = UDim2.new(0.5, 0, 0.42, 0)
 MiniImage.BackgroundTransparency = 1
-MiniImage.Image = "rbxassetid://10734898102"
-MiniImage.ImageColor3 = Color3.fromRGB(240, 240, 240)
+MiniImage.Image = "rbxthumb://type=Asset&id=97227868899888&w=150&h=150"
+
+task.spawn(function()
+    pcall(function()
+        local info = MarketplaceService:GetProductInfo(97227868899888, Enum.InfoType.Asset)
+        if info and info.AssetId then
+            MiniImage.Image = "rbxassetid://" .. tostring(info.AssetId)
+        end
+    end)
+end)
 
 local MiniLabel = Instance.new("TextLabel", MiniIcon)
 MiniLabel.Size = UDim2.new(1, 0, 0, 12)
