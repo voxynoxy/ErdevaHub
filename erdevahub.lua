@@ -1,10 +1,9 @@
--- [[ ERDEVA HUB v2.6 - TOWER ENGINE OVERHAUL ]]
+-- [[ ERDEVA HUB v2.7 - SAFE 1-CLICK TOWER & ANTI-KICK ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local StarterGui = game:GetService("StarterGui")
-local VirtualInputManager = pcall(function() return game:GetService("VirtualInputManager") end) and game:GetService("VirtualInputManager") or nil
 
 local player = Players.LocalPlayer
 
@@ -72,7 +71,7 @@ local function GetHumanoid()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
--- DETEKSI LEVEL AYAM (MULTI FORMAT)
+-- DETEKSI LEVEL AYAM (CONTOH: YB LV.47)
 local function GetHighestChickenLevel()
     local highest = 0
     local pg = player:FindFirstChild("PlayerGui")
@@ -96,7 +95,6 @@ local State = {
     COLLECTING = "COLLECTING",
     RECYCLING  = "RECYCLING",
     UPGRADING  = "UPGRADING",
-    TOWER      = "TOWER",
     REBIRTH    = "REBIRTH",
     WAITING    = "WAITING",
 }
@@ -215,6 +213,7 @@ local function WalkTo(targetPos, timeout, stopDist)
     return root and FlatDist(root.Position, targetPos) <= (stopDist + 2.5)
 end
 
+-- KLIK AMAN (STANDAR EXECUTOR, ANTI-DETEKSI)
 local function ClickGuiButton(btn)
     if not btn or not btn.Parent then return false end
     pcall(function()
@@ -225,13 +224,6 @@ local function ClickGuiButton(btn)
         if firesignal then 
             firesignal(btn.MouseButton1Click)
             firesignal(btn.Activated)
-        end
-        if VirtualInputManager and btn.AbsolutePosition and btn.AbsoluteSize then
-            local x = btn.AbsolutePosition.X + btn.AbsoluteSize.X / 2
-            local y = btn.AbsolutePosition.Y + btn.AbsoluteSize.Y / 2
-            VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
-            task.wait(0.02)
-            VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
         end
     end)
     return true
@@ -541,65 +533,25 @@ local function DoUpgrades()
     DismissAllPopups()
 end
 
--- CEK STATUS BATTLE TOWER
-local function IsInTowerBattle()
+-- KIRIM AYAM KE TOWER (1X KLIK, JEDA 30 DETIK AGAR TIDAK SPAM / MONDAR-MANDIR)
+local function SendChickenToTower()
+    if not CanRunAction("SendChickenTower", 30) then return false end
+    
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
-    for _, g in ipairs(pg:GetChildren()) do
-        if g:IsA("ScreenGui") and g.Enabled then
-            local n = g.Name:lower()
-            if n:find("battle") or n:find("tower") or n:find("fight") then
-                for _, el in ipairs(g:GetDescendants()) do
-                    if el:IsA("GuiObject") and IsVisibleGui(el) then
-                        local en = el.Name:lower()
-                        if en:find("health") or en:find("enemy") or en:find("round") or en:find("floor") or en:find("turn") then
-                            return true
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return false
-end
-
--- BUKA DAN JALANKAN TOWER
-local function OpenTowerGui()
-    local pg = player:FindFirstChild("PlayerGui")
-    if not pg then return false end
+    
+    -- Cari tombol TOWER di toolbar bawah
     for _, b in ipairs(pg:GetDescendants()) do
         if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
             local text = ButtonText(b)
-            if text:find("tower") or text:find("battle") then
-                if not text:find("not yet") and not text:find("auto") and not text:find("rebirth") then
-                    ClickGuiButton(b)
-                    return true
-                end
+            if (text:find("tower") or text:find("kastil") or b.Name:lower() == "tower") and not text:find("rebirth") and not text:find("not yet") then
+                ClickGuiButton(b)
+                Notify("ERDEVA HUB", "Ayam berhasil dikirim ke Tower! Bertarung...", 3.0)
+                return true
             end
         end
     end
     return false
-end
-
-local function RunTowerBattle()
-    if not CanRunAction("TowerStartAction", 2.0) and not IsInTowerBattle() then return false end
-    
-    OpenTowerGui()
-    task.wait(0.5)
-    
-    local t0 = tick()
-    while IsRunning and (Flags.AutoStartTower or Flags.AutoRebirth) and tick() - t0 < 90 do
-        if Flags.AutoNoThanks then
-            TryClickGuiAction("NoThanks", { "no thanks", "nothanks", "skip" }, 0.8)
-        end
-        TryClickGuiAction("NextFloor", { "claim", "next floor", "victory", "continue", "next", "battle", "attack", "fight" }, 0.8)
-        
-        if not IsInTowerBattle() and tick() - t0 > 4 then
-            break
-        end
-        task.wait(0.3)
-    end
-    return true
 end
 
 -- REBIRTH SYSTEM
@@ -657,24 +609,26 @@ task.spawn(function()
                 return
             end
             
-            -- 1. CEK TOWER
+            -- 1. CEK & KIRIM AYAM KE TOWER JIKA LEVEL MENCUKUPI (1X KLIK, JEDA 30 DETIK)
             local curLv = GetHighestChickenLevel()
             local reqLv = tonumber(Flags.TowerMinLevel) or 50
-            if (Flags.AutoStartTower or Flags.AutoRebirth) and (curLv >= reqLv or IsInTowerBattle()) then
-                SetState(State.TOWER)
-                RunTowerBattle()
-                SetState(State.COLLECTING)
-                return
+            if (Flags.AutoStartTower or Flags.AutoRebirth) and curLv >= reqLv then
+                SendChickenToTower()
             end
             
-            -- 2. CEK REBIRTH
+            -- 2. AUTO NO THANKS DI BACKGROUND
+            if Flags.AutoNoThanks then
+                TryClickGuiAction("NoThanks", { "no thanks", "nothanks", "skip" }, 0.8)
+            end
+            
+            -- 3. CEK REBIRTH
             if Flags.AutoRebirth then
                 CheckAndDoRebirth()
             end
             
             local targetCap = tonumber(Flags.ScrapCapacity) or 20
             
-            -- 3. SIKLUS AMBIL PLAT DI ARENA
+            -- 4. SIKLUS AMBIL PLAT DI ARENA
             if CurrentBatchScraps < targetCap then
                 SetState(State.COLLECTING)
                 local scrap = FindNearestArenaScrap()
@@ -689,11 +643,11 @@ task.spawn(function()
                     end
                 end
             else
-                -- 4. JALAN PULANG KE RECYCLER DI BASE
+                -- 5. JALAN PULANG KE RECYCLER DI BASE
                 SetState(State.RECYCLING)
                 DoRecycleAtBase()
                 
-                -- 5. UPGRADE FEEDER SETELAH SETOR
+                -- 6. UPGRADE FEEDER SETELAH SETOR
                 if CurrentBatchScraps == 0 then
                     SetState(State.UPGRADING)
                     DoUpgrades()
@@ -743,7 +697,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.6</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.7</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
