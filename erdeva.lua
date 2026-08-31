@@ -1,4 +1,4 @@
--- [[ ERDEVA HUB v2.0 - DEFINITIVE CHICKEN FARM AUTO REBIRTH ]]
+-- [[ ERDEVA HUB v2.1 - REAL-TIME HEAD STACK SYNC ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -68,6 +68,33 @@ end
 local function GetHumanoid()
     local c = GetChar()
     return c and c:FindFirstChildOfClass("Humanoid")
+end
+
+-- MENGHITUNG JUMLAH PLAT YANG MENEMPEL DI KEPALA KARAKTER
+local function GetPlatesOnCharacter()
+    local char = GetChar()
+    if not char then return 0 end
+    local count = 0
+    for _, item in ipairs(char:GetChildren()) do
+        if item:IsA("BasePart") then
+            local n = item.Name:lower()
+            -- Abaikan anggota tubuh standar roblox
+            if n ~= "humanoidrootpart" and n ~= "head" and n ~= "torso" and n ~= "uppertorso" and n ~= "lowertorso" and not n:find("arm") and not n:find("leg") and not n:find("hand") and not n:find("foot") then
+                count = count + 1
+            end
+        elseif item:IsA("Model") and (item.Name:lower():find("scrap") or item.Name:lower():find("plate") or item.Name:lower():find("drop")) then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+local function GetTotalCarried()
+    local onChar = GetPlatesOnCharacter()
+    if onChar > 0 then
+        CurrentBatchScraps = math.max(CurrentBatchScraps, onChar)
+    end
+    return CurrentBatchScraps
 end
 
 local State = {
@@ -223,7 +250,7 @@ local function IsVisibleGui(obj)
     return true
 end
 
--- TUTUP POPUP NOT ENOUGH CASH & ROBUR POPUPS
+-- TUTUP POPUP NOT ENOUGH CASH
 local function DismissAllPopups()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
@@ -288,7 +315,7 @@ local function TryClickGuiAction(actionName, patterns, cooldown)
     return false
 end
 
--- DETEKSI HANYA LEMPENGAN PLAT ASLI DI ARENA (BUKAN BANGUNAN BASE)
+-- DETEKSI HANYA PLAT DI ARENA (BUKAN BANGUNAN BASE)
 local function IsRealScrap(obj)
     if not obj:IsA("BasePart") or not obj.Parent then return false end
     
@@ -301,7 +328,6 @@ local function IsRealScrap(obj)
     local pn = obj.Parent.Name:lower()
     local ppn = (obj.Parent.Parent and obj.Parent.Parent.Name:lower()) or ""
     
-    -- Filter bangunan/pad base
     if n:find("fence") or n:find("wall") or n:find("floor") or n:find("base") or n:find("spawn") or n:find("grass") or n:find("terrain") then
         return false
     end
@@ -315,7 +341,6 @@ local function IsRealScrap(obj)
         return false
     end
     
-    -- Lempengan plat asli
     if n:find("scrap") or n:find("plate") or n:find("drop") or n:find("trash") or n:find("sheet") or n:find("debris") or pn:find("scrap") or pn:find("plate") or pn:find("drop") or pn:find("drops") then
         return true
     end
@@ -332,7 +357,6 @@ local function CleanupScrapBlacklist()
     end
 end
 
--- CARI PLAT SCRAP TERDEKAT DI ARENA
 local function FindNearestArenaScrap()
     CleanupScrapBlacklist()
     local root = GetRoot()
@@ -355,14 +379,17 @@ end
 local function CollectScrapPlate(scrap)
     if not scrap or not scrap.Parent then return false end
     local root = GetRoot()
-    if not root then return false end
+    local char = GetChar()
+    if not root or not char then return false end
     
     FastTouch(scrap)
-    WalkTo(scrap.Position, 2.0, 2.5)
+    WalkTo(scrap.Position, 1.8, 2.5)
     FastTouch(scrap)
     TriggerNearbyPrompt("scrap", 10)
 
-    if not scrap.Parent then
+    -- Plat berhasil diambil jika: parent berubah (nempel ke badan), atau parent nil, atau dekat sekali
+    local pickedUp = (not scrap.Parent) or scrap:IsDescendantOf(char) or FlatDist(root.Position, scrap.Position) <= 3.0
+    if pickedUp then
         CurrentBatchScraps = CurrentBatchScraps + 1
         BlacklistedScraps[scrap] = nil
         return true
@@ -372,7 +399,7 @@ local function CollectScrapPlate(scrap)
     end
 end
 
--- CARI PAD RECYCLER & FEEDER DI BASE
+-- CARI PAD DI BASE
 local function FindBasePad(keywords)
     local root = GetRoot()
     if not root then return nil end
@@ -477,7 +504,7 @@ local function DoRecycleAtBase()
     
     TryClickGuiAction("RecycleScrap", { "recycle", "sell scrap", "convert", "empty", "deposit" }, 1.0)
     
-    task.wait(0.3)
+    task.wait(0.4)
     CurrentBatchScraps = 0
     table.clear(BlacklistedScraps)
     DismissAllPopups()
@@ -535,7 +562,6 @@ local function CheckAndDoRebirth()
     return false
 end
 
--- CARI PUSAT ARENA JIKA TIDAK ADA SCRAP TERDEKAT
 local function GetArenaCenter()
     for _, obj in ipairs(workspace:GetDescendants()) do
         local n = obj.Name:lower()
@@ -546,7 +572,7 @@ local function GetArenaCenter()
     return nil
 end
 
--- LOOP UTAMA: FOKUS ARENA ➔ RECYCLE ➔ FEEDER ➔ REBIRTH
+-- MAIN AUTOMATION LOOP
 task.spawn(function()
     while IsRunning do
         pcall(function()
@@ -566,15 +592,16 @@ task.spawn(function()
             end
             
             local targetCap = tonumber(Flags.ScrapCapacity) or 20
+            local currentTotal = GetTotalCarried()
             
-            -- SIKLUS 1: AMBIL PLAT DI ARENA SAMPAI PENUH (20)
-            if CurrentBatchScraps < targetCap then
+            -- SIKLUS 1: AMBIL PLAT DI ARENA SAMPAI TUMPUKAN TERCAPAI (20)
+            if currentTotal < targetCap then
                 SetState(State.COLLECTING)
                 local scrap = FindNearestArenaScrap()
                 if scrap then
                     CollectScrapPlate(scrap)
                 else
-                    -- Jika sedang di Base, langsung lari masuk ke dalam Arena!
+                    -- Lari ke Arena jika sedang di Base!
                     local arenaPos = GetArenaCenter()
                     if arenaPos and FlatDist(root.Position, arenaPos) > 20 then
                         WalkTo(arenaPos, 3.5, 6.0)
@@ -583,7 +610,7 @@ task.spawn(function()
                     end
                 end
             else
-                -- SIKLUS 2: RECYCLE DI BASE
+                -- SIKLUS 2: PULANG RECYCLE DI BASE
                 SetState(State.RECYCLING)
                 DoRecycleAtBase()
                 
@@ -597,7 +624,7 @@ task.spawn(function()
                     CheckAndDoRebirth()
                 end
                 
-                -- Selesai, kembali ambil scrap di arena!
+                -- Kembali ke Arena!
                 SetState(State.COLLECTING)
             end
         end)
@@ -637,7 +664,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.0 (Master Auto)</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.1</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -847,9 +874,9 @@ AddInfo("Status",         "Operational")
 task.spawn(function()
     while IsRunning do
         if LiveCarriedLabel and LiveCarriedLabel.Parent then
-            LiveCarriedLabel.Text = tostring(CurrentBatchScraps) .. " / " .. tostring(Flags.ScrapCapacity or 20)
+            LiveCarriedLabel.Text = tostring(GetTotalCarried()) .. " / " .. tostring(Flags.ScrapCapacity or 20)
         end
-        task.wait(0.2)
+        task.wait(0.15)
     end
 end)
 
