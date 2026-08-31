@@ -954,7 +954,7 @@ local function AddInfo(k, v, isLive)
 end
 
 AddInfo("Hub",            "ERDEVA HUB")
-AddInfo("Game",           "Chicken Farm")
+AddInfo("Game",           "Grow a Chicken Fighter")
 AddInfo("Plates Grabbed", "0 / 20", true)
 AddInfo("Status",         "Operational")
 
