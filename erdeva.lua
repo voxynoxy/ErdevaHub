@@ -1,4 +1,3 @@
--- [[ ERDEVA HUB v1.6.1 - NATIVE ROBLOX NOTIFICATION ONLY ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -89,8 +88,8 @@ local GuiCooldowns = {}
 local BlacklistedScraps = {}
 
 local STATE_TIMEOUTS = {
-    [State.COLLECTING] = 15,
-    [State.RECYCLING]  = 4,
+    [State.COLLECTING] = 20,
+    [State.RECYCLING]  = 5,
     [State.UPGRADING]  = 4,
     [State.TOWER]      = 120,
     [State.REBIRTH]    = 10,
@@ -187,7 +186,7 @@ local function WalkTo(targetPos, timeout, stopDist)
     local root = GetRoot()
     if not hum or not root then return false end
     stopDist = stopDist or 2.5
-    timeout = timeout or 2.2
+    timeout = timeout or 3.0
     local t0 = tick()
     local char = GetChar()
 
@@ -205,7 +204,7 @@ local function WalkTo(targetPos, timeout, stopDist)
     end
 
     root = GetRoot()
-    return root and FlatDist(root.Position, targetPos) <= (stopDist + 2.0)
+    return root and FlatDist(root.Position, targetPos) <= (stopDist + 2.5)
 end
 
 local RECYCLER_POS = nil
@@ -248,7 +247,7 @@ local function IsVisibleGui(obj)
     return true
 end
 
--- AUTO CLOSE POPUP "NOT ENOUGH CASH" & POPUP SHOP
+-- AUTO CLOSE POPUP "NOT ENOUGH CASH" & SHOP
 local function DismissAllPopups()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
@@ -315,7 +314,7 @@ local function TryClickGuiAction(actionName, patterns, cooldown)
     return false
 end
 
--- DETEKSI LEMPENGAN SCRAP DI LANTAI SECARA AKURAT
+-- DETEKSI SEMUA LEMPENGAN SCRAP DI ARENA
 local function IsGroundScrap(obj)
     if not obj:IsA("BasePart") or not obj.Parent then return false end
     
@@ -326,17 +325,26 @@ local function IsGroundScrap(obj)
     
     local n = obj.Name:lower()
     local pn = obj.Parent.Name:lower()
-    local ppn = (obj.Parent.Parent and obj.Parent.Parent.Name:lower()) or ""
     
-    local isScrapName = (n:find("scrap") or n:find("plate") or n:find("trash") or n:find("drop") or n:find("poop") or pn:find("scrap") or pn:find("plate") or pn:find("trash") or pn:find("drop") or ppn:find("scrap"))
-    local isExcluded = (n:find("recycler") or n:find("feeder") or n:find("upgrade") or n:find("shop") or n:find("button") or n:find("coop") or pn:find("recycler") or pn:find("feeder") or pn:find("shop") or n:find("arena") or pn:find("arena") or n:find("floor") or n:find("base") or n:find("fence"))
+    -- Kecualikan struktur base / dekorasi bangunan
+    if n:find("fence") or n:find("wall") or n:find("floor") or n:find("baseplate") or n:find("terrain") or n:find("spawn") then
+        return false
+    end
+    if n:find("recycler") or n:find("feeder") or n:find("coop") or n:find("incubator") or n:find("shop") or n:find("button") then
+        return false
+    end
+    if pn:find("recycler") or pn:find("feeder") or pn:find("coop") or pn:find("incubator") or pn:find("shop") then
+        return false
+    end
     
-    if isScrapName and not isExcluded then return true end
+    -- Deteksi lempengan scrap / drop / plate
+    if n:find("scrap") or n:find("plate") or n:find("trash") or n:find("drop") or n:find("metal") or pn:find("scrap") or pn:find("plate") or pn:find("drop") then
+        return true
+    end
     
-    if not isExcluded and obj.Size.Y < 0.8 and obj.Size.X > 0.8 and obj.Size.Z > 0.8 and obj.Size.X < 6 and obj.Size.Z < 6 then
-        if obj.Position.Y < 50 and (obj.Material == Enum.Material.CorrodedMetal or obj.Material == Enum.Material.Metal or obj.Material == Enum.Material.SmoothPlastic or obj.Material == Enum.Material.Neon) then
-            return true
-        end
+    -- Deteksi bentuk lempengan plat tipis (lebar 0.8 - 6 studs, tebal tipis)
+    if obj.Size.Y <= 1.2 and obj.Size.X >= 0.7 and obj.Size.Z >= 0.7 and obj.Size.X <= 6 and obj.Size.Z <= 6 then
+        return true
     end
     
     return false
@@ -351,6 +359,7 @@ local function CleanupScrapBlacklist()
     end
 end
 
+-- Cari Scrap Terdekat (Jangkauan Luas hingga ke Arena)
 local function FindBestScrap()
     CleanupScrapBlacklist()
     local root = GetRoot()
@@ -360,7 +369,7 @@ local function FindBestScrap()
     for _, obj in ipairs(workspace:GetDescendants()) do
         if IsGroundScrap(obj) and not BlacklistedScraps[obj] then
             local d = FlatDist(root.Position, obj.Position)
-            if d < 350 and d < bestDist then
+            if d < 800 and d < bestDist then
                 best = obj
                 bestDist = d
             end
@@ -369,6 +378,7 @@ local function FindBestScrap()
     return best
 end
 
+-- Ambil Plat di Arena
 local function TryCollectScrap(scrap)
     if not scrap or not scrap.Parent or not IsGroundScrap(scrap) then return false end
     
@@ -376,7 +386,7 @@ local function TryCollectScrap(scrap)
     if not root then return false end
     
     FastTouch(scrap)
-    local reached = WalkTo(scrap.Position, 1.5, 2.5)
+    local reached = WalkTo(scrap.Position, 2.0, 2.5)
     FastTouch(scrap)
     TriggerNearbyPrompt("scrap", 10)
 
@@ -498,7 +508,7 @@ local function RecycleScrap()
         FastTouch(recyclerPad.part)
     end
     
-    WalkTo(recyclerPos, 3.5, 3.2)
+    WalkTo(recyclerPos, 4.0, 3.2)
     
     if recyclerPad and recyclerPad.part then
         FastTouch(recyclerPad.part)
@@ -589,7 +599,7 @@ local function RecoverIfStuck()
     SetState(State.COLLECTING)
 end
 
--- Main Loop
+-- Main Loop: Lari ke Arena -> Ambil Plat -> Pulang Recycle -> Balik Lagi
 task.spawn(function()
     while IsRunning do
         pcall(function()
@@ -620,13 +630,13 @@ task.spawn(function()
                     TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 2)
                 end
                 
-                -- RECYCLE JIKA SUDAH TERCAPAI ATAU TANGAN PENUH
+                -- RECYCLE JIKA TARGET 20 TERCAPAI ATAU TANGAN PENUH
                 if Flags.AutoRecycleScrap and (CurrentBatchScraps >= targetCap or (CurrentBatchScraps > 0 and ConsecutiveFails >= 4)) then
                     SetState(State.RECYCLING)
                     return
                 end
                 
-                -- AMBIL PLAT
+                -- AMBIL PLAT DI ARENA
                 if Flags.AutoGrabScraps then
                     local scrap = FindBestScrap()
                     if scrap then
@@ -692,7 +702,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v1.6.1</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v1.7</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
