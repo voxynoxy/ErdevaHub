@@ -1,3 +1,4 @@
+-- [[ ERDEVA HUB v2.7 ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -39,7 +40,7 @@ local function Notify(title, desc, duration)
     end)
 end
 
-Notify("ERDEVA HUB", "Chicken Farm Script Loaded! Ready to farm.", 4.5)
+Notify("ERDEVA HUB", "v2.7 Loaded! Ready to farm.", 4.5)
 
 local Flags = {
     AutoOpenEggs        = false,
@@ -453,40 +454,24 @@ local function ExecuteBasePad(actionName, keywords, guiPatterns, cooldown)
 end
 
 local function ExecuteUpgradeRecycler()
-    if not CanRunAction("UpgradeRecyclerTrigger", 1.2) then return false end
     local root = GetRoot()
     local recPos = LOCKED_RECYCLER_POS or (root and root.Position)
+    if not recPos then return false end
     
-    if recPos then
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("ProximityPrompt") and obj.Enabled then
-                local part = obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent or obj:FindFirstAncestorWhichIsA("BasePart")
-                if part then
-                    local d = (recPos - part.Position).Magnitude
-                    if d <= 25 then
-                        local t = (obj.ActionText .. " " .. obj.ObjectText .. " " .. obj.Name .. " " .. part.Name):lower()
-                        if t:find("upgrade") or t:find("speed") or t:find("level") or t:find("recycler") or t:find("boost") then
-                            TriggerPrompt(obj)
-                        end
-                    end
-                end
-            elseif obj:IsA("BasePart") then
-                local d = (recPos - obj.Position).Magnitude
-                if d <= 20 then
-                    local n = obj.Name:lower()
-                    if n:find("upgrade") or n:find("speed") or n:find("recycler") then
-                        FastTouch(obj)
-                        local cd = obj:FindFirstChildOfClass("ClickDetector")
-                        if cd and fireclickdetector then
-                            pcall(function() fireclickdetector(cd) end)
-                        end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") and obj.Enabled then
+            local part = obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent or obj:FindFirstAncestorWhichIsA("BasePart")
+            if part then
+                local d = (recPos - part.Position).Magnitude
+                if d <= 25 then
+                    local text = (obj.ActionText .. " " .. obj.ObjectText .. " " .. obj.Name .. " " .. part.Name):lower()
+                    if text:find("upgrade") or text:find("$") or text:find("recycler") or text:find("speed") then
+                        TriggerPrompt(obj)
                     end
                 end
             end
         end
     end
-    
-    TryClickGuiAction("UpgradeRecycler", { "upgrade recycler", "upgrade speed", "recycler speed", "recycler level", "boost recycler", "upgrade" }, 1.0)
     return true
 end
 
@@ -540,7 +525,6 @@ local function DoUpgrades()
         ExecuteBasePad("UpgradeFeeder", { "upgrade feeder", "feed speed", "feeder level", "feeder upgrade" }, { "upgrade feeder", "upgrade speed" }, 2.5)
     end
     if Flags.AutoUpgradeRecycler or Flags.AutoRebirth then
-        ExecuteBasePad("UpgradeRecycler", { "upgrade recycler", "recycler speed", "recycler level", "upgrade speed", "recycler upgrade", "boost recycler" }, { "upgrade recycler", "upgrade speed" }, 2.0)
         ExecuteUpgradeRecycler()
     end
     if Flags.AutoUpgradeCoop then
@@ -593,8 +577,8 @@ task.spawn(function()
                 for _, b in ipairs(pg:GetDescendants()) do
                     if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
                         local text = ButtonText(b)
-                        if (text:find("tower") or b.Name:lower() == "tower") and not text:find("rebirth") and not text:find("not yet") and not text:find("no thanks") then
-                            if CanRunAction("SendChickenTower", 5.0) then
+                        if (text:find("tower") or b.Name:lower() == "tower") and not text:find("rebirth") and not text:find("not yet") and not text:find("no thanks") and not text:find("call") and not text:find("whistle") then
+                            if CanRunAction("SendChickenTower", 6.0) then
                                 ClickGuiButton(b)
                                 ChickenInTower = true
                                 Notify("ERDEVA HUB", "Ayam dikirim ke Tower! Menunggu K.O...", 2.5)
@@ -605,7 +589,7 @@ task.spawn(function()
                 end
             end
         end)
-        task.wait(0.2)
+        task.wait(0.3)
     end
 end)
 
@@ -732,7 +716,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.5</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.7</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
