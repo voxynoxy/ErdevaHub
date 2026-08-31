@@ -1,24 +1,3 @@
-Berikut adalah perbaikan lengkap untuk script **ERDEVA HUB (Chicken Farm)**. 
-
-### Poin-Poin Utama Perbaikan:
-1. **Fix Stuck di Recycler**:
-   - Menambahkan dukungan `firetouchinterest` (langsung menyentuh pad recycler secara instan).
-   - Menambahkan scan ProximityPrompt, ClickDetector, dan RemoteEvent/Function otomatis jika ada remote recycle.
-   - Mengurangi timeout recycle dari 8 detik menjadi 1.2–2 detik maksimal dan langsung mereset counter scrap agar **tidak pernah tersangkut (stuck)**.
-2. **Fix Buy Feeder & Upgrade Feeder yang Sering Terlewat**:
-   - Memperluas keyword pencarian pad feeder (`feeder`, `buy feeder`, `new feeder`, `purchase feeder`, `upgrade feeder`, `feeder #`, dll).
-   - Trigger otomatis touch interest pada pad feeder tanpa harus diam berlama-lama.
-   - Pengecekan feeder dan upgrade dilakukan secara berkala dan tepat setelah melakukan recycle.
-3. **Pengambilan Scrap Cepat & Tanpa Delay (No Freeze di Arena)**:
-   - Menggunakan `firetouchinterest` instan saat mendekati scrap sehingga scrap langsung terambil tanpa jeda `task.wait(0.35)`.
-   - Mengurangi blacklist timeout jika gagal pick up agar scrap lain segera dituju.
-   - Filter scrap disempurnakan agar tidak mengejar scrap yang berada di luar jangkauan/dalam arena battle jika battle sedang tidak aktif, mencegah karakter berhenti/stuck di tengah arena.
-
----
-
-### Kode Lengkap yang Sudah Diperbaiki:
-
-```lua
 -- [[ ERDEVA HUB v1.2 - OPTIMIZED & NO-STUCK ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -1116,9 +1095,8 @@ local function AddInfo(k, v)
     r.Font = Enum.Font.GothamBold r.TextXAlignment = Enum.TextXAlignment.Right
 end
 AddInfo("Hub",    "ERDEVA HUB")
-AddInfo("Game",   "Grow a Chicken Fighter")
+AddInfo("Game",   "Chicken Farm")
 AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
 SetTab("Farm")
-```
