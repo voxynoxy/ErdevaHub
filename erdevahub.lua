@@ -1,4 +1,4 @@
--- [[ ERDEVA HUB v3.3 - LIVE DYNAMIC LEVEL TRACKER ]]
+-- [[ ERDEVA HUB v3.4 - FIXED LEVEL & SCRAP RANGE ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -40,7 +40,7 @@ local function Notify(title, desc, duration)
     end)
 end
 
-Notify("ERDEVA HUB", "Chicken Farm Script Loaded! Ready to farm.", 4.5)
+Notify("ERDEVA HUB", "v3.4 Loaded!", 3)
 
 local Flags = {
     AutoOpenEggs        = false,
@@ -74,7 +74,7 @@ local function GetHumanoid()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
--- NOCLIP REAL-TIME (TEMBUS SEMUA PAGAR)
+-- NOCLIP REAL-TIME
 RunService.Stepped:Connect(function()
     if not IsRunning then return end
     local char = GetChar()
@@ -97,42 +97,62 @@ local function IsVisibleGui(obj)
     return true
 end
 
--- DETEKSI LEVEL AYAM REAL-TIME DARI HUD KANAN ATAS
+-- Daftar kata kunci yang BUKAN level ayam
+local BLACKLIST_WORDS = {
+    "recycler","feeder","coop","shop","milestone","rebirth","floor","upgrade",
+    "scrap","cash","coin","earn","sell","buy","unlock","claim","tower","chaos",
+    "arena","wave","round","reward","record","kill","beat","enemy","record"
+}
+
+local function IsBlacklisted(text)
+    local t = text:lower()
+    for _, w in ipairs(BLACKLIST_WORDS) do
+        if t:find(w) then return true end
+    end
+    return false
+end
+
+-- DETEKSI LEVEL AYAM: SCAN SEMUA LABEL, AMBIL NILAI VALID TERKECIL
+-- (Level ayam selalu lebih kecil dari level bangunan/recycler)
 local function GetHighestChickenLevel()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return 0 end
-    
-    local bestLevel = 0
-    local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
-    
+
+    local candidates = {}
+
     for _, lbl in ipairs(pg:GetDescendants()) do
         if lbl:IsA("TextLabel") and IsVisibleGui(lbl) then
-            local text = lbl.Text
-            local t = text:lower()
+            local rawText = lbl.Text
+            local t = rawText:lower()
+
+            -- Skip jika teks mengandung kata bangunan/irrelevan
+            if IsBlacklisted(t) then continue end
+
+            -- Skip label dari parent yang namanya mengandung kata bangunan
             local pName = (lbl.Parent and lbl.Parent.Name:lower()) or ""
             local ppName = (lbl.Parent and lbl.Parent.Parent and lbl.Parent.Parent.Name:lower()) or ""
-            
-            -- Filter ketat hanya HUD Ayam di kanan atas
-            if not t:find("recycler") and not t:find("feeder") and not t:find("coop") and not t:find("shop") and not t:find("milestone") and not t:find("rebirth") and not t:find("floor")
-               and not pName:find("recycler") and not pName:find("feeder") and not pName:find("coop") and not pName:find("shop") and not pName:find("milestone") and not pName:find("rebirth")
-               and not ppName:find("recycler") and not ppName:find("feeder") and not ppName:find("coop") then
-               
-                local lv = text:match("[Ll][Vv][Ll]?%.?:?%s*(%d+)") or text:match("[Ll][Ee][Vv][Ee][Ll]%.?:?%s*(%d+)")
-                if lv then
-                    local num = tonumber(lv)
-                    if num and num > 0 and num < 5000 then
-                        local pos = lbl.AbsolutePosition
-                        -- Posisi di area kanan atas layar (HUD ayam aktif)
-                        if pos.Y < (vp.Y * 0.35) and pos.X > (vp.X * 0.35) then
-                            bestLevel = math.max(bestLevel, num)
-                        end
-                    end
+            if IsBlacklisted(pName) or IsBlacklisted(ppName) then continue end
+
+            -- Cari angka level dari teks
+            local lv = rawText:match("[Ll][Vv][Ll]?%.?:?%s*(%d+)")
+                    or rawText:match("[Ll][Ee][Vv][Ee][Ll]%.?:?%s*(%d+)")
+            if lv then
+                local num = tonumber(lv)
+                if num and num >= 1 and num <= 9999 then
+                    table.insert(candidates, num)
                 end
             end
         end
     end
-    
-    return bestLevel
+
+    if #candidates == 0 then return 0 end
+
+    -- Ambil nilai TERKECIL karena level ayam selalu lebih rendah dari bangunan
+    local smallest = candidates[1]
+    for _, v in ipairs(candidates) do
+        if v < smallest then smallest = v end
+    end
+    return smallest
 end
 
 local State = {
@@ -150,9 +170,7 @@ local GuiCooldowns = {}
 local BlacklistedScraps = {}
 
 local function SetState(newState)
-    if CurrentState ~= newState then
-        CurrentState = newState
-    end
+    if CurrentState ~= newState then CurrentState = newState end
 end
 
 local function CanRunAction(action, cooldown)
@@ -164,7 +182,7 @@ local function CanRunAction(action, cooldown)
     return true
 end
 
-player.CharacterAdded:Connect(function(char)
+player.CharacterAdded:Connect(function()
     task.wait(0.5)
     CurrentBatchScraps = 0
     ChickenInTower = false
@@ -236,10 +254,8 @@ local function WalkTo(targetPos, timeout, stopDist)
         hum = GetHumanoid()
         root = GetRoot()
         if not hum or not root or hum.Health <= 0 then return false end
-        
         local d = FlatDist(root.Position, targetPos)
         if d <= stopDist then return true end
-
         hum:MoveTo(targetPos)
         task.wait(0.03)
     end
@@ -255,7 +271,7 @@ local function ClickGuiButton(btn)
             for _, c in ipairs(getconnections(btn.MouseButton1Click)) do c:Fire() end
             for _, c in ipairs(getconnections(btn.Activated)) do c:Fire() end
         end
-        if firesignal then 
+        if firesignal then
             firesignal(btn.MouseButton1Click)
             firesignal(btn.Activated)
         end
@@ -269,11 +285,10 @@ local function ButtonText(btn)
     return ((btn:IsA("TextButton") and btn.Text or "") .. " " .. btn.Name .. " " .. img):lower()
 end
 
--- AUTO KLIK "NO THANKS" INSTAN
+-- AUTO NO THANKS
 local function HandleTowerEndPopup()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
-    
     for _, obj in ipairs(pg:GetDescendants()) do
         local isMatch = false
         if (obj:IsA("TextLabel") or obj:IsA("TextButton")) and IsVisibleGui(obj) then
@@ -281,17 +296,18 @@ local function HandleTowerEndPopup()
             if t:find("no thanks") or t:find("nothanks") or t:find("no, thanks") then
                 isMatch = true
             end
-        elseif (obj:IsA("ImageButton") or obj:IsA("GuiObject")) and IsVisibleGui(obj) then
+        elseif IsVisibleGui(obj) then
             local n = obj.Name:lower()
-            if n:find("nothanks") or n:find("no_thanks") or n:find("decline") or n:find("skip") then
+            if n:find("nothanks") or n:find("no_thanks") or n:find("decline") then
                 isMatch = true
             end
         end
-        
         if isMatch then
             local target = obj
             if not obj:IsA("TextButton") and not obj:IsA("ImageButton") then
-                target = obj:FindFirstAncestorWhichIsA("TextButton") or obj:FindFirstAncestorWhichIsA("ImageButton") or obj.Parent
+                target = obj:FindFirstAncestorWhichIsA("TextButton")
+                    or obj:FindFirstAncestorWhichIsA("ImageButton")
+                    or obj.Parent
             end
             if target then
                 ClickGuiButton(target)
@@ -305,45 +321,30 @@ local function HandleTowerEndPopup()
     return false
 end
 
--- TUTUP POPUP NOT ENOUGH CASH
 local function DismissAllPopups()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
-    local clicked = false
-    
-    if Flags.AutoNoThanks then
-        HandleTowerEndPopup()
-    end
-    
+    if Flags.AutoNoThanks then HandleTowerEndPopup() end
     for _, gui in ipairs(pg:GetDescendants()) do
         if gui:IsA("GuiObject") and IsVisibleGui(gui) then
             local text = (gui:IsA("TextLabel") and gui.Text:lower()) or ""
             local name = gui.Name:lower()
-            
-            if text:find("not enough cash") or text:find("not enough") or name:find("notenoughcash") then
+            if text:find("not enough") or name:find("notenoughcash") then
                 local container = gui.Parent
                 while container and container ~= pg do
                     for _, b in ipairs(container:GetDescendants()) do
                         if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
                             local btnTxt = ButtonText(b)
                             if btnTxt:find("x") or btnTxt:find("close") or b.Name:lower() == "x" or b.Name:lower() == "close" then
-                                clicked = ClickGuiButton(b) or clicked
+                                ClickGuiButton(b)
                             end
                         end
                     end
                     container = container.Parent
                 end
             end
-            
-            if (gui:IsA("TextButton") or gui:IsA("ImageButton")) and (gui.Name:lower() == "x" or gui.Name:lower() == "close") then
-                local pName = gui.Parent and gui.Parent.Name:lower() or ""
-                if pName:find("popup") or pName:find("frame") or pName:find("modal") or pName:find("shop") or pName:find("cash") then
-                    clicked = ClickGuiButton(gui) or clicked
-                end
-            end
         end
     end
-    return clicked
 end
 
 task.spawn(function()
@@ -374,36 +375,27 @@ local function TryClickGuiAction(actionName, patterns, cooldown)
     return false
 end
 
--- DETEKSI PLAT ASLI DI ARENA
+-- DETEKSI PLAT DI ARENA (ORIGINAL v2.5 + JANGKAUAN 1500)
 local function IsRealScrap(obj)
     if not obj:IsA("BasePart") or not obj.Parent then return false end
-    
     local char = GetChar()
     if char and obj:IsDescendantOf(char) then return false end
     local anc = obj:FindFirstAncestorOfClass("Model")
     if anc and anc:FindFirstChildOfClass("Humanoid") then return false end
-    
+
     local n = obj.Name:lower()
     local pn = obj.Parent.Name:lower()
     local ppn = (obj.Parent.Parent and obj.Parent.Parent.Name:lower()) or ""
-    
-    if n:find("fence") or n:find("wall") or n:find("floor") or n:find("base") or n:find("spawn") or n:find("grass") or n:find("terrain") then
-        return false
-    end
-    if n:find("recycler") or n:find("feeder") or n:find("coop") or n:find("incubator") or n:find("shop") or n:find("pad") or n:find("button") then
-        return false
-    end
-    if pn:find("recycler") or pn:find("feeder") or pn:find("coop") or pn:find("incubator") or pn:find("shop") or pn:find("plot") then
-        return false
-    end
-    if ppn:find("plot") or ppn:find("base") or ppn:find("feeder") or ppn:find("recycler") then
-        return false
-    end
-    
-    if n:find("scrap") or n:find("plate") or n:find("drop") or n:find("trash") or n:find("sheet") or n:find("debris") or pn:find("scrap") or pn:find("plate") or pn:find("drop") or pn:find("drops") then
+
+    if n:find("fence") or n:find("wall") or n:find("floor") or n:find("base") or n:find("spawn") or n:find("grass") or n:find("terrain") then return false end
+    if n:find("recycler") or n:find("feeder") or n:find("coop") or n:find("incubator") or n:find("shop") or n:find("pad") or n:find("button") then return false end
+    if pn:find("recycler") or pn:find("feeder") or pn:find("coop") or pn:find("incubator") or pn:find("shop") or pn:find("plot") then return false end
+    if ppn:find("plot") or ppn:find("base") or ppn:find("feeder") or ppn:find("recycler") then return false end
+
+    if n:find("scrap") or n:find("plate") or n:find("drop") or n:find("trash") or n:find("sheet") or n:find("debris")
+        or pn:find("scrap") or pn:find("plate") or pn:find("drop") or pn:find("drops") then
         return true
     end
-    
     return false
 end
 
@@ -416,17 +408,16 @@ local function CleanupScrapBlacklist()
     end
 end
 
--- CARI PLAT SCRAP TERDEKAT DI ARENA
+-- CARI PLAT (JANGKAUAN 1500 STUDS)
 local function FindNearestArenaScrap()
     CleanupScrapBlacklist()
     local root = GetRoot()
     if not root then return nil end
     local best, bestDist = nil, 9999
-    
     for _, obj in ipairs(workspace:GetDescendants()) do
         if IsRealScrap(obj) and not BlacklistedScraps[obj] then
             local d = FlatDist(root.Position, obj.Position)
-            if d < 800 and d < bestDist then
+            if d < 1500 and d < bestDist then
                 best = obj
                 bestDist = d
             end
@@ -435,82 +426,43 @@ local function FindNearestArenaScrap()
     return best
 end
 
--- AMBIL LEMPENGAN PLAT
 local function CollectScrapPlate(scrap)
     if not scrap or not scrap.Parent then return false end
     local root = GetRoot()
-    local char = GetChar()
-    if not root or not char then return false end
-    
+    if not root then return false end
     FastTouch(scrap)
     WalkTo(scrap.Position, 1.8, 2.5)
     FastTouch(scrap)
     TriggerNearbyPrompt("scrap", 10)
-
     CurrentBatchScraps = CurrentBatchScraps + 1
     BlacklistedScraps[scrap] = tick()
     return true
 end
 
--- CARI PAD DI BASE
 local function FindBasePad(keywords)
     local root = GetRoot()
     if not root then return nil end
     local bestPart, bestPrompt, bestDist = nil, nil, 9999
-    
     for _, obj in ipairs(workspace:GetDescendants()) do
-        local targetPart, prompt = nil, nil
-        local matched = false
-
+        local targetPart, prompt, matched = nil, nil, false
         if obj:IsA("ProximityPrompt") then
             local part = obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent or obj:FindFirstAncestorWhichIsA("BasePart")
             local text = (obj.ActionText .. " " .. obj.ObjectText .. " " .. obj.Name .. " " .. (part and part.Name or "")):lower()
             for _, kw in ipairs(keywords) do
-                if text:find(kw:lower()) then
-                    matched = true
-                    targetPart = part
-                    prompt = obj
-                    break
-                end
-            end
-        elseif obj:IsA("TextLabel") or obj:IsA("SurfaceGui") or obj:IsA("BillboardGui") then
-            local text = (obj:IsA("TextLabel") and obj.Text or ""):lower()
-            local name = obj.Name:lower()
-            for _, kw in ipairs(keywords) do
-                if text:find(kw:lower()) or name:find(kw:lower()) then
-                    matched = true
-                    targetPart = obj:FindFirstAncestorWhichIsA("BasePart")
-                    if targetPart then
-                        prompt = targetPart:FindFirstChildOfClass("ProximityPrompt") or targetPart:FindFirstChildOfClass("ClickDetector")
-                    end
-                    break
-                end
+                if text:find(kw:lower()) then matched=true targetPart=part prompt=obj break end
             end
         elseif obj:IsA("BasePart") then
             local name = obj.Name:lower()
             for _, kw in ipairs(keywords) do
-                if name:find(kw:lower()) then
-                    matched = true
-                    targetPart = obj
-                    prompt = obj:FindFirstChildOfClass("ProximityPrompt") or obj:FindFirstChildOfClass("ClickDetector")
-                    break
-                end
+                if name:find(kw:lower()) then matched=true targetPart=obj prompt=obj:FindFirstChildOfClass("ProximityPrompt") or obj:FindFirstChildOfClass("ClickDetector") break end
             end
         end
-
         if matched and targetPart and targetPart:IsA("BasePart") then
             local d = (root.Position - targetPart.Position).Magnitude
-            if d < 300 and d < bestDist then
-                bestDist = d
-                bestPart = targetPart
-                bestPrompt = prompt
-            end
+            if d < 300 and d < bestDist then bestDist=d bestPart=targetPart bestPrompt=prompt end
         end
     end
-    
-    if bestPart then
-        return { part = bestPart, prompt = bestPrompt }
-    end
+    if bestPart then return { part = bestPart, prompt = bestPrompt } end
     return nil
 end
 
@@ -526,91 +478,67 @@ local function ExecuteBasePad(actionName, keywords, guiPatterns, cooldown)
             elseif pad.prompt and pad.prompt:IsA("ClickDetector") and fireclickdetector then
                 pcall(function() fireclickdetector(pad.prompt) end)
             else
-                for _, kw in ipairs(keywords) do
-                    TriggerNearbyPrompt(kw, 12)
-                end
+                for _, kw in ipairs(keywords) do TriggerNearbyPrompt(kw, 12) end
             end
         end
     end
-    if guiPatterns then
-        TryClickGuiAction(actionName, guiPatterns, cooldown or 2.0)
-    end
+    if guiPatterns then TryClickGuiAction(actionName, guiPatterns, cooldown or 2.0) end
     DismissAllPopups()
     return true
 end
 
--- RECYCLE DI BASE (LOCKED POSISI)
 local function DoRecycleAtBase()
     if not CanRunAction("RecycleScrap", 2.0) then return false end
-    
     local targetPos = LOCKED_RECYCLER_POS
     local pad = nil
-    
     if not targetPos then
         pad = FindBasePad({ "recycler", "recycle", "sell scrap", "convert" })
-        if pad and pad.part then
-            targetPos = pad.part.Position
-        end
+        if pad and pad.part then targetPos = pad.part.Position end
     end
-    
-    if not targetPos then
-        return false
-    end
-    
-    local reached = WalkTo(targetPos, 5.0, 2.8)
-    
-    if pad and pad.part then
-        FastTouch(pad.part)
-    end
-    
+    if not targetPos then return false end
+    WalkTo(targetPos, 5.0, 2.8)
+    if pad and pad.part then FastTouch(pad.part) end
     TriggerNearbyPrompt("recycle", 14)
     TryClickGuiAction("RecycleScrap", { "recycle", "sell scrap", "convert", "empty", "deposit" }, 1.0)
-    
     task.wait(0.4)
-    
     local root = GetRoot()
     if root and FlatDist(root.Position, targetPos) <= 4.0 then
         CurrentBatchScraps = 0
         table.clear(BlacklistedScraps)
     end
-    
     DismissAllPopups()
     return true
 end
 
--- UPGRADES
 local function DoUpgrades()
     if Flags.AutoBuyFeeders or Flags.AutoRebirth then
-        ExecuteBasePad("BuyFeeder", { "buy feeder", "new feeder", "feeder", "purchase feeder", "unlock feeder", "add feeder" }, { "buy feeder", "new feeder" }, 2.5)
+        ExecuteBasePad("BuyFeeder", { "buy feeder", "new feeder", "feeder", "unlock feeder", "add feeder" }, { "buy feeder", "new feeder" }, 2.5)
     end
     if Flags.AutoUpgradeFeeder or Flags.AutoRebirth then
-        ExecuteBasePad("UpgradeFeeder", { "upgrade feeder", "feed speed", "feeder level", "feeder upgrade" }, { "upgrade feeder", "upgrade speed" }, 2.5)
+        ExecuteBasePad("UpgradeFeeder", { "upgrade feeder", "feed speed", "feeder upgrade" }, { "upgrade feeder" }, 2.5)
     end
     if Flags.AutoUpgradeRecycler or Flags.AutoRebirth then
-        ExecuteBasePad("UpgradeRecycler", { "upgrade recycler", "recycler speed", "recycler level" }, { "upgrade recycler" }, 2.5)
+        ExecuteBasePad("UpgradeRecycler", { "upgrade recycler", "recycler speed" }, { "upgrade recycler" }, 2.5)
     end
     if Flags.AutoUpgradeCoop then
-        ExecuteBasePad("UpgradeCoop", { "upgrade coop", "coop level", "expand coop" }, { "upgrade coop" }, 2.5)
+        ExecuteBasePad("UpgradeCoop", { "upgrade coop", "coop level" }, { "upgrade coop" }, 2.5)
     end
     if Flags.AutoOpenEggs then
-        TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 2.0)
+        TryClickGuiAction("OpenEggs", { "hatch", "open egg" }, 2.0)
     end
     DismissAllPopups()
 end
 
--- KIRIM AYAM KE TOWER (1X KLIK)
 local function SendChickenToTower()
     if ChickenInTower then return false end
     if tick() - LastTowerFinishedAt < 3.0 then return false end
     if not CanRunAction("SendChickenTower", 4.0) then return false end
-    
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
-    
     for _, b in ipairs(pg:GetDescendants()) do
         if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
             local text = ButtonText(b)
-            if (text:find("tower") or text:find("kastil") or b.Name:lower() == "tower") and not text:find("rebirth") and not text:find("not yet") and not text:find("no thanks") then
+            if (text:find("tower") or b.Name:lower() == "tower") and not text:find("rebirth") and not text:find("not yet") and not text:find("no thanks") then
                 ClickGuiButton(b)
                 ChickenInTower = true
                 Notify("ERDEVA HUB", "Ayam dikirim ke Tower!", 2.5)
@@ -621,28 +549,25 @@ local function SendChickenToTower()
     return false
 end
 
--- REBIRTH SYSTEM
 local function CheckAndDoRebirth()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
-    
     for _, modal in ipairs(pg:GetDescendants()) do
         if modal:IsA("Frame") and IsVisibleGui(modal) and modal.Name:lower():find("rebirth") then
             for _, b in ipairs(modal:GetDescendants()) do
                 if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
                     local text = ButtonText(b)
-                    if text:find("not yet") or text:find("milestones") or text:find("x") or text:find("close") then
-                        -- Abaikan NOT YET
-                    elseif (text:find("rebirth") or text:find("claim") or text:find("yes")) and CanRunAction("ExecuteRebirth", 5) then
-                        ClickGuiButton(b)
-                        task.wait(0.3)
-                        TryClickGuiAction("RebirthConfirm", { "confirm", "yes", "do rebirth" }, 1.5)
-                        task.wait(1.5)
-                        
-                        CurrentBatchScraps = 0
-                        table.clear(BlacklistedScraps)
-                        DoUpgrades()
-                        return true
+                    if not (text:find("not yet") or text:find("milestones") or text:find("x") or text:find("close")) then
+                        if (text:find("rebirth") or text:find("claim") or text:find("yes")) and CanRunAction("ExecuteRebirth", 5) then
+                            ClickGuiButton(b)
+                            task.wait(0.3)
+                            TryClickGuiAction("RebirthConfirm", { "confirm", "yes", "do rebirth" }, 1.5)
+                            task.wait(1.5)
+                            CurrentBatchScraps = 0
+                            table.clear(BlacklistedScraps)
+                            DoUpgrades()
+                            return true
+                        end
                     end
                 end
             end
@@ -651,7 +576,6 @@ local function CheckAndDoRebirth()
     return false
 end
 
--- CARI PUSAT ARENA DI DEPAN
 local function GetArenaCenter()
     for _, obj in ipairs(workspace:GetDescendants()) do
         local n = obj.Name:lower()
@@ -662,40 +586,26 @@ local function GetArenaCenter()
     return nil
 end
 
--- MAIN AUTOMATION LOOP
+-- MAIN LOOP
 task.spawn(function()
     while IsRunning do
         pcall(function()
             local active = Flags.AutoRebirth or Flags.AutoGrabScraps or Flags.AutoRecycleScrap or Flags.AutoStartTower
-            if not active then
-                SetState(State.IDLE)
-                task.wait(0.3)
-                return
-            end
-            
+            if not active then SetState(State.IDLE) task.wait(0.3) return end
             local root = GetRoot()
             local hum = GetHumanoid()
-            if not root or not hum or hum.Health <= 0 then
-                SetState(State.WAITING)
-                task.wait(0.3)
-                return
-            end
-            
-            -- 1. CEK TOWER REAL-TIME
+            if not root or not hum or hum.Health <= 0 then SetState(State.WAITING) task.wait(0.3) return end
+
             local curLv = GetHighestChickenLevel()
             local reqLv = tonumber(Flags.TowerMinLevel) or 50
             if (Flags.AutoStartTower or Flags.AutoRebirth) and curLv >= reqLv and not ChickenInTower then
                 SendChickenToTower()
             end
-            
-            -- 2. CEK REBIRTH
-            if Flags.AutoRebirth then
-                CheckAndDoRebirth()
-            end
-            
+
+            if Flags.AutoRebirth then CheckAndDoRebirth() end
+
             local targetCap = tonumber(Flags.ScrapCapacity) or 20
-            
-            -- 3. SIKLUS UTAMA: LARI KE DEPAN KE ARENA MEMUNGUT 20 PLAT
+
             if CurrentBatchScraps < targetCap then
                 SetState(State.COLLECTING)
                 local scrap = FindNearestArenaScrap()
@@ -710,21 +620,13 @@ task.spawn(function()
                     end
                 end
             else
-                -- 4. JALAN PULANG KE RECYCLER DI BASE HANYA SAAT 20 PLAT PENUH
                 SetState(State.RECYCLING)
                 DoRecycleAtBase()
-                
-                -- 5. UPGRADE FEEDER SETELAH SETOR
                 if CurrentBatchScraps == 0 then
                     SetState(State.UPGRADING)
                     DoUpgrades()
-                    
-                    if Flags.AutoRebirth then
-                        SetState(State.REBIRTH)
-                        CheckAndDoRebirth()
-                    end
+                    if Flags.AutoRebirth then SetState(State.REBIRTH) CheckAndDoRebirth() end
                 end
-                
                 SetState(State.COLLECTING)
             end
         end)
@@ -732,12 +634,9 @@ task.spawn(function()
     end
 end)
 
--- [[ GUI SETUP ]]
+-- GUI
 local Gui = Instance.new("ScreenGui", CoreGui)
-Gui.Name = "ERDEVA_HUB"
-Gui.ResetOnSpawn = false
-Gui.IgnoreGuiInset = true
-Gui.DisplayOrder = 9999
+Gui.Name = "ERDEVA_HUB" Gui.ResetOnSpawn = false Gui.IgnoreGuiInset = true Gui.DisplayOrder = 9999
 
 local function Shutdown()
     IsRunning = false
@@ -746,41 +645,32 @@ local function Shutdown()
 end
 
 local Main = Instance.new("Frame", Gui)
-Main.AnchorPoint = Vector2.new(0.5,0.5)
-Main.Size = UDim2.fromOffset(W,H)
-Main.Position = UDim2.new(0.5,0,0.5,0)
-Main.BackgroundColor3 = C.Bg
-Main.BorderSizePixel = 0
-Main.ClipsDescendants = true
+Main.AnchorPoint = Vector2.new(0.5,0.5) Main.Size = UDim2.fromOffset(W,H)
+Main.Position = UDim2.new(0.5,0,0.5,0) Main.BackgroundColor3 = C.Bg
+Main.BorderSizePixel = 0 Main.ClipsDescendants = true
 Instance.new("UICorner", Main).CornerRadius = UDim.new(0,8)
-local Stroke = Instance.new("UIStroke", Main)
-Stroke.Color = C.Red Stroke.Thickness = 1.2
+local Stroke = Instance.new("UIStroke", Main) Stroke.Color = C.Red Stroke.Thickness = 1.2
 
 local Top = Instance.new("Frame", Main)
-Top.Size = UDim2.new(1,0,0,34)
-Top.BackgroundColor3 = C.Top Top.BorderSizePixel = 0
+Top.Size = UDim2.new(1,0,0,34) Top.BackgroundColor3 = C.Top Top.BorderSizePixel = 0
 
 local Title = Instance.new("TextLabel", Top)
-Title.Size = UDim2.new(1,-70,1,0)
-Title.Position = UDim2.fromOffset(12,0)
-Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v3.3</font>"
+Title.Size = UDim2.new(1,-70,1,0) Title.Position = UDim2.fromOffset(12,0)
+Title.BackgroundTransparency = 1 Title.Text = "ERDEVA HUB <font color='#dc2323'>v3.4</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
 local CloseBtn = Instance.new("TextButton", Top)
 CloseBtn.Size = UDim2.fromOffset(24,24) CloseBtn.Position = UDim2.new(1,-28,0.5,-12)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(30,30,30)
-CloseBtn.Text = "✕" CloseBtn.TextColor3 = C.Sub CloseBtn.TextSize = 11
-CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.BackgroundColor3 = Color3.fromRGB(30,30,30) CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = C.Sub CloseBtn.TextSize = 11 CloseBtn.Font = Enum.Font.GothamBold
 Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0,5)
 CloseBtn.MouseButton1Click:Connect(Shutdown)
 
 local MinBtn = Instance.new("TextButton", Top)
 MinBtn.Size = UDim2.fromOffset(24,24) MinBtn.Position = UDim2.new(1,-56,0.5,-12)
-MinBtn.BackgroundColor3 = Color3.fromRGB(30,30,30)
-MinBtn.Text = "—" MinBtn.TextColor3 = C.Sub MinBtn.TextSize = 11
-MinBtn.Font = Enum.Font.GothamBold
+MinBtn.BackgroundColor3 = Color3.fromRGB(30,30,30) MinBtn.Text = "—"
+MinBtn.TextColor3 = C.Sub MinBtn.TextSize = 11 MinBtn.Font = Enum.Font.GothamBold
 Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0,5)
 local minState = false
 MinBtn.MouseButton1Click:Connect(function()
@@ -814,8 +704,7 @@ Content.Size = UDim2.new(1,-12,1,-68) Content.Position = UDim2.fromOffset(6,64)
 Content.BackgroundTransparency = 1 Content.BorderSizePixel = 0
 Content.ScrollBarThickness = 3 Content.ScrollBarImageColor3 = C.Red
 Content.CanvasSize = UDim2.new(0,0,0,0) Content.AutomaticCanvasSize = Enum.AutomaticSize.Y
-local CL = Instance.new("UIListLayout", Content)
-CL.Padding = UDim.new(0,4)
+Instance.new("UIListLayout", Content).Padding = UDim.new(0,4)
 
 local Pages, TabBtns = {}, {}
 local function SetTab(name)
@@ -835,7 +724,7 @@ local MakeTab = function(name, order)
     local page = Instance.new("Frame", Content)
     page.Size = UDim2.new(1,0,0,0) page.AutomaticSize = Enum.AutomaticSize.Y
     page.BackgroundTransparency = 1 page.Visible = false
-    local pl = Instance.new("UIListLayout", page) pl.Padding = UDim.new(0,4)
+    Instance.new("UIListLayout", page).Padding = UDim.new(0,4)
     Pages[name] = page
     btn.MouseButton1Click:Connect(function() SetTab(name) end)
     return page
@@ -866,29 +755,20 @@ local function AddToggle(parent, label, key)
         tw(b,{BackgroundColor3=(on and C.Red or Color3.fromRGB(50,50,50))})
         tw(k,{Position=(on and UDim2.fromOffset(20,2) or UDim2.fromOffset(2,2))})
     end
-    ToggleUpdaters[key] = upd
-    upd(Flags[key])
+    ToggleUpdaters[key] = upd upd(Flags[key])
     b.MouseButton1Click:Connect(function()
         local ns = not Flags[key]
         SetFlag(key, ns)
         if key == "AutoRebirth" then
             if ns then
-                SetFlag("AutoGrabScraps", true)
-                SetFlag("AutoRecycleScrap", true)
-                SetFlag("AutoUpgradeRecycler", true)
-                SetFlag("AutoBuyFeeders", true)
-                SetFlag("AutoUpgradeFeeder", true)
-                SetFlag("AutoStartTower", true)
-                SetFlag("AutoNoThanks", true)
+                for _, fk in ipairs({"AutoGrabScraps","AutoRecycleScrap","AutoUpgradeRecycler","AutoBuyFeeders","AutoUpgradeFeeder","AutoStartTower","AutoNoThanks"}) do
+                    SetFlag(fk, true)
+                end
             else
-                for _, fk in ipairs({"AutoOpenEggs","AutoGrabScraps","AutoRecycleScrap","AutoUpgradeRecycler",
-                                      "AutoBuyFeeders","AutoUpgradeFeeder","AutoUpgradeCoop",
-                                      "AutoStartTower","AutoNoThanks","AutoStartChaos"}) do
+                for _, fk in ipairs({"AutoOpenEggs","AutoGrabScraps","AutoRecycleScrap","AutoUpgradeRecycler","AutoBuyFeeders","AutoUpgradeFeeder","AutoUpgradeCoop","AutoStartTower","AutoNoThanks","AutoStartChaos"}) do
                     SetFlag(fk, false)
                 end
-                CurrentBatchScraps = 0
-                table.clear(BlacklistedScraps)
-                SetState(State.IDLE)
+                CurrentBatchScraps = 0 table.clear(BlacklistedScraps) SetState(State.IDLE)
             end
         end
     end)
@@ -900,8 +780,8 @@ local function AddButton(parent, label, callback)
     b.Text = label b.TextColor3 = C.Txt b.TextSize = 11 b.Font = Enum.Font.GothamBold
     Instance.new("UICorner", b).CornerRadius = UDim.new(0,6)
     b.MouseButton1Click:Connect(function()
-        tw(b, {BackgroundColor3 = C.Red}, 0.1)
-        task.delay(0.2, function() tw(b, {BackgroundColor3 = Color3.fromRGB(35,35,35)}, 0.15) end)
+        tw(b,{BackgroundColor3=C.Red},0.1)
+        task.delay(0.2, function() tw(b,{BackgroundColor3=Color3.fromRGB(35,35,35)},0.15) end)
         if callback then callback(b) end
     end)
     return b
@@ -918,8 +798,7 @@ local function AddSlider(parent, label, maxV, defV, key)
     local vl = Instance.new("TextLabel", f)
     vl.Size = UDim2.fromOffset(50,16) vl.Position = UDim2.new(1,-58,0,2)
     vl.BackgroundTransparency = 1 vl.Text = tostring(defV).."/"..tostring(maxV)
-    vl.TextColor3 = C.Red vl.TextSize = 11 vl.Font = Enum.Font.GothamBold
-    vl.TextXAlignment = Enum.TextXAlignment.Right
+    vl.TextColor3 = C.Red vl.TextSize = 11 vl.Font = Enum.Font.GothamBold vl.TextXAlignment = Enum.TextXAlignment.Right
     local bar = Instance.new("Frame", f)
     bar.Size = UDim2.new(1,-16,0,4) bar.Position = UDim2.fromOffset(8,22)
     bar.BackgroundColor3 = Color3.fromRGB(45,45,45) bar.BorderSizePixel = 0
@@ -928,12 +807,8 @@ local function AddSlider(parent, label, maxV, defV, key)
     fill.Size = UDim2.new(defV/maxV,0,1,0) fill.BackgroundColor3 = C.Red
     Instance.new("UICorner", fill).CornerRadius = UDim.new(1,0)
     local sld = false
-    bar.InputBegan:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then sld=true end
-    end)
-    UserInputService.InputEnded:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then sld=false end
-    end)
+    bar.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then sld=true end end)
+    UserInputService.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then sld=false end end)
     UserInputService.InputChanged:Connect(function(i)
         if sld and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
             local r = math.clamp((i.Position.X-bar.AbsolutePosition.X)/bar.AbsoluteSize.X,0,1)
@@ -950,33 +825,32 @@ local PlotPage   = MakeTab("Plot",   2)
 local BattlePage = MakeTab("Battle", 3)
 local InfoPage   = MakeTab("Info",   4)
 
-AddToggle(FarmPage, "Auto Open Eggs",        "AutoOpenEggs")
-AddToggle(FarmPage, "Auto Grab Scraps",      "AutoGrabScraps")
-AddToggle(FarmPage, "Auto Recycle Scrap",    "AutoRecycleScrap")
-AddToggle(FarmPage, "Auto Upgrade Recycler", "AutoUpgradeRecycler")
-AddSlider(FarmPage, "Scrap Capacity", 50, 20, "ScrapCapacity")
+AddToggle(FarmPage,   "Auto Open Eggs",        "AutoOpenEggs")
+AddToggle(FarmPage,   "Auto Grab Scraps",      "AutoGrabScraps")
+AddToggle(FarmPage,   "Auto Recycle Scrap",    "AutoRecycleScrap")
+AddToggle(FarmPage,   "Auto Upgrade Recycler", "AutoUpgradeRecycler")
+AddSlider(FarmPage,   "Scrap Capacity", 50, 20, "ScrapCapacity")
 
-AddToggle(PlotPage, "Auto Rebirth (Master)", "AutoRebirth")
-AddButton(PlotPage, "[LOCK] Set Recycler Pad", function(btn)
+AddToggle(PlotPage,   "Auto Rebirth (Master)", "AutoRebirth")
+AddButton(PlotPage,   "[LOCK] Set Recycler Pad", function(btn)
     local root = GetRoot()
     if root then
         LOCKED_RECYCLER_POS = root.Position
         btn.Text = "✓ Recycler Pad Locked!"
-        Notify("ERDEVA HUB", "Recycler Pad successfully locked at current position!", 3.5)
+        Notify("ERDEVA HUB", "Recycler Pad locked!", 3)
         task.delay(2.5, function() btn.Text = "[LOCK] Set Recycler Pad" end)
     end
 end)
-AddToggle(PlotPage, "Auto Buy Feeders",      "AutoBuyFeeders")
-AddToggle(PlotPage, "Auto Upgrade Feeder",   "AutoUpgradeFeeder")
-AddToggle(PlotPage, "Auto Upgrade Coop",     "AutoUpgradeCoop")
+AddToggle(PlotPage,   "Auto Buy Feeders",      "AutoBuyFeeders")
+AddToggle(PlotPage,   "Auto Upgrade Feeder",   "AutoUpgradeFeeder")
+AddToggle(PlotPage,   "Auto Upgrade Coop",     "AutoUpgradeCoop")
 
-AddToggle(BattlePage, "Auto Start Tower",  "AutoStartTower")
+AddToggle(BattlePage, "Auto Start Tower",      "AutoStartTower")
 AddSlider(BattlePage, "Min Chicken Lv for Tower", 100, 50, "TowerMinLevel")
-AddToggle(BattlePage, "Auto No Thanks",    "AutoNoThanks")
-AddToggle(BattlePage, "Auto Start Chaos",  "AutoStartChaos")
+AddToggle(BattlePage, "Auto No Thanks",        "AutoNoThanks")
+AddToggle(BattlePage, "Auto Start Chaos",      "AutoStartChaos")
 
-local LiveCarriedLabel = nil
-local LiveLevelLabel = nil
+local LiveCarriedLabel, LiveLevelLabel = nil, nil
 
 local function AddInfo(k, v, isLive, isLevel)
     local f = Instance.new("Frame", InfoPage)
@@ -995,7 +869,7 @@ local function AddInfo(k, v, isLive, isLevel)
 end
 
 AddInfo("Hub",                 "ERDEVA HUB")
-AddInfo("Plates Grabbed",      "0 / 20", true, false)
+AddInfo("Plates Grabbed",      "0 / 20", true,  false)
 AddInfo("Chicken Lv Detected", "Lv 0",   false, true)
 AddInfo("Status",              "Operational")
 
@@ -1011,4 +885,4 @@ task.spawn(function()
     end
 end)
 
-SetTab("Battle")
+SetTab("Plot")
