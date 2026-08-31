@@ -1,4 +1,4 @@
--- [[ ERDEVA HUB v3.2 - PRECISE CHICKEN LEVEL HUD ]]
+-- [[ ERDEVA HUB v3.3 - LIVE DYNAMIC LEVEL TRACKER ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -97,36 +97,42 @@ local function IsVisibleGui(obj)
     return true
 end
 
--- DETEKSI LEVEL AYAM ASLI (HANYA DARI HUD AYAM KANAN ATAS)
+-- DETEKSI LEVEL AYAM REAL-TIME DARI HUD KANAN ATAS
 local function GetHighestChickenLevel()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return 0 end
     
+    local bestLevel = 0
+    local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
+    
     for _, lbl in ipairs(pg:GetDescendants()) do
         if lbl:IsA("TextLabel") and IsVisibleGui(lbl) then
-            local t = lbl.Text:lower()
+            local text = lbl.Text
+            local t = text:lower()
             local pName = (lbl.Parent and lbl.Parent.Name:lower()) or ""
             local ppName = (lbl.Parent and lbl.Parent.Parent and lbl.Parent.Parent.Name:lower()) or ""
             
-            -- Filter out bangunan/shop (Recycler Lv. 65, Feeder, dll)
+            -- Filter ketat hanya HUD Ayam di kanan atas
             if not t:find("recycler") and not t:find("feeder") and not t:find("coop") and not t:find("shop") and not t:find("milestone") and not t:find("rebirth") and not t:find("floor")
                and not pName:find("recycler") and not pName:find("feeder") and not pName:find("coop") and not pName:find("shop") and not pName:find("milestone") and not pName:find("rebirth")
                and not ppName:find("recycler") and not ppName:find("feeder") and not ppName:find("coop") then
                
-                local lv = lbl.Text:match("[Ll][Vv][Ll]?%.?:?%s*(%d+)") or lbl.Text:match("[Ll][Ee][Vv][Ee][Ll]%.?:?%s*(%d+)")
+                local lv = text:match("[Ll][Vv][Ll]?%.?:?%s*(%d+)") or text:match("[Ll][Ee][Vv][Ee][Ll]%.?:?%s*(%d+)")
                 if lv then
                     local num = tonumber(lv)
                     if num and num > 0 and num < 5000 then
-                        -- Hanya ambil jika posisinya di bagian atas layar (HUD ayam kanan atas)
-                        if lbl.AbsolutePosition.Y < 250 then
-                            return num
+                        local pos = lbl.AbsolutePosition
+                        -- Posisi di area kanan atas layar (HUD ayam aktif)
+                        if pos.Y < (vp.Y * 0.35) and pos.X > (vp.X * 0.35) then
+                            bestLevel = math.max(bestLevel, num)
                         end
                     end
                 end
             end
         end
     end
-    return 0
+    
+    return bestLevel
 end
 
 local State = {
@@ -675,7 +681,7 @@ task.spawn(function()
                 return
             end
             
-            -- 1. CEK TOWER
+            -- 1. CEK TOWER REAL-TIME
             local curLv = GetHighestChickenLevel()
             local reqLv = tonumber(Flags.TowerMinLevel) or 50
             if (Flags.AutoStartTower or Flags.AutoRebirth) and curLv >= reqLv and not ChickenInTower then
@@ -758,7 +764,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v3.2</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v3.3</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -1005,4 +1011,4 @@ task.spawn(function()
     end
 end)
 
-SetTab("Plot")
+SetTab("Battle")
