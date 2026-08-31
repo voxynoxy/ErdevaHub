@@ -85,6 +85,8 @@ local CurrentTargetScrap = nil
 local LastPopupDismiss = 0
 local LastRemoteScan = 0
 local RemoteCache = {}
+local ScrapCache = {}
+local LastScrapScan = 0
 
 local STATE_TIMEOUTS = {
     [State.COLLECTING] = 15,
@@ -157,11 +159,11 @@ local function WalkTo(targetPos, timeout, stopDist)
         root = GetRoot()
         if not hum or not root or hum.Health <= 0 then return false end
         if FlatDist(root.Position, targetPos) <= stopDist then return true end
-        if tick() - lastMove > 0.35 then
+        if tick() - lastMove > 0.12 then
             lastMove = tick()
             hum:MoveTo(targetPos)
         end
-        task.wait(0.08)
+        task.wait(0.04)
     end
 
     root = GetRoot()
@@ -515,6 +517,32 @@ local function IsGroundScrap(obj)
     return isScrap and not isExcluded
 end
 
+local function RefreshScrapCache(force)
+    if not force and tick() - LastScrapScan < 1.25 then return end
+    LastScrapScan = tick()
+    table.clear(ScrapCache)
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if IsGroundScrap(obj) then
+            ScrapCache[obj] = true
+        end
+    end
+end
+
+workspace.DescendantAdded:Connect(function(obj)
+    task.defer(function()
+        if IsRunning and IsGroundScrap(obj) then
+            ScrapCache[obj] = true
+        end
+    end)
+end)
+
+workspace.DescendantRemoving:Connect(function(obj)
+    ScrapCache[obj] = nil
+    BlacklistedScraps[obj] = nil
+end)
+
+RefreshScrapCache(true)
+
 local function CleanupScrapBlacklist()
     local now = tick()
     for scrap, t in pairs(BlacklistedScraps) do
@@ -526,10 +554,16 @@ end
 
 local function FindBestScrap()
     CleanupScrapBlacklist()
+    RefreshScrapCache(false)
     local root = GetRoot()
     if not root then return nil end
     local best, bestDist = nil, 9999
-    for _, obj in ipairs(workspace:GetDescendants()) do
+    for obj in pairs(ScrapCache) do
+        if not obj.Parent then
+            ScrapCache[obj] = nil
+            BlacklistedScraps[obj] = nil
+            continue
+        end
         if IsGroundScrap(obj) and not BlacklistedScraps[obj] then
             local d = FlatDist(root.Position, obj.Position)
             if d < 400 and d < bestDist then
@@ -545,18 +579,18 @@ local function TryCollectScrap(scrap)
     if not scrap or not scrap.Parent or not IsGroundScrap(scrap) then return false end
     return RunExclusiveAction(function()
         CurrentTargetScrap = scrap
-        local before = GetActualScrapCount()
-        if not WalkTo(scrap.Position, 5, 2.2) then
+        local before, hasScrapCounter = GetActualScrapCount()
+        if not WalkTo(scrap.Position, 4, 3.1) then
             BlacklistedScraps[scrap] = tick()
             CurrentTargetScrap = nil
             return false
         end
         TriggerNearbyPrompt("scrap", 9)
-        task.wait(0.35)
-        local after = GetActualScrapCount()
+        task.wait(0.12)
+        local after, hasAfterCounter = GetActualScrapCount()
         local disappeared = not scrap.Parent
         local increased = after and before and after > before
-        if disappeared or increased then
+        if disappeared or increased or (not hasScrapCounter and not hasAfterCounter) then
             collectedScraps = increased and after or (collectedScraps + 1)
             LastObservedScrapCount = after
             BlacklistedScraps[scrap] = nil
@@ -581,7 +615,7 @@ local function RecycleScrap()
     if not recyclerPos then return false end
     return RunExclusiveAction(function()
         if not CanRunAction("RecycleScrap", 2.5) then return false end
-        local scrapBefore = GetActualScrapCount()
+        local scrapBefore, hasScrapCounter = GetActualScrapCount()
         local moneyBefore = GetMoneyValue()
         if not WalkTo(recyclerPos, 8, 2.8) then return false end
         Debug("Recycler reached")
@@ -592,9 +626,15 @@ local function RecycleScrap()
         end
         TryClickGuiAction("RecycleScrap", { "recycle", "sell scrap", "convert" }, 2)
         SafeDismissPopups()
+        if not hasScrapCounter and not moneyBefore then
+            collectedScraps = 0
+            table.clear(BlacklistedScraps)
+            Debug("Recycle completed by prompt fallback")
+            return true
+        end
         local t0 = tick()
-        while IsRunning and tick() - t0 < 8 do
-            task.wait(0.4)
+        while IsRunning and tick() - t0 < 2.5 do
+            task.wait(0.2)
             local scrapNow = GetActualScrapCount()
             local moneyNow = GetMoneyValue()
             if (scrapBefore and scrapNow and scrapNow < scrapBefore) or (moneyBefore and moneyNow and moneyNow > moneyBefore) then
@@ -604,13 +644,10 @@ local function RecycleScrap()
                 return true
             end
         end
-        if not LastObservedScrapCount or LastObservedScrapCount == collectedScraps then
-            collectedScraps = 0
-            table.clear(BlacklistedScraps)
-            Debug("Recycle assumed completed by fallback")
-            return true
-        end
-        return false
+        collectedScraps = 0
+        table.clear(BlacklistedScraps)
+        Debug("Recycle timeout, returning to farming")
+        return true
     end)
 end
 
@@ -621,7 +658,7 @@ local function RebirthAvailable()
         if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
             local text = ButtonText(b)
             local looksReady = text:find("claim") or text:find("available") or text:find("ready")
-                or text:find("do rebirth") or text:find("rebirth")
+                or text:find("do rebirth")
             local blocked = text:find("auto") or text:find("master") or text:find("locked")
                 or text:find("require") or text:find("need")
             if looksReady and text:find("rebirth") and not blocked then
@@ -670,6 +707,23 @@ local function RunUpgrades()
     end
     if Flags.AutoOpenEggs then
         did = TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 2) or did
+    end
+    return did
+end
+
+local function RunQuickUpgrades()
+    local did = false
+    if Flags.AutoBuyFeeders or Flags.AutoRebirth then
+        did = TryClickGuiAction("QuickBuyFeeder", { "buy feeder" }, 2.5) or did
+    end
+    if Flags.AutoUpgradeFeeder or Flags.AutoRebirth then
+        did = TryClickGuiAction("QuickUpgradeFeeder", { "upgrade feeder" }, 2.5) or did
+    end
+    if Flags.AutoUpgradeRecycler then
+        did = TryClickGuiAction("QuickUpgradeRecycler", { "upgrade recycler" }, 3) or did
+    end
+    if Flags.AutoUpgradeCoop then
+        did = TryClickGuiAction("QuickUpgradeCoop", { "upgrade coop" }, 3) or did
     end
     return did
 end
@@ -766,7 +820,15 @@ task.spawn(function()
                 end
             elseif CurrentState == State.RECYCLING then
                 if RecycleScrap() then
-                    SetState(State.UPGRADING)
+                    RunQuickUpgrades()
+                    if Flags.AutoRebirth and RebirthAvailable() then
+                        SetState(State.REBIRTH)
+                    elseif (Flags.AutoBuyFeeders or Flags.AutoUpgradeFeeder or Flags.AutoUpgradeRecycler or Flags.AutoUpgradeCoop)
+                        and not Flags.AutoGrabScraps then
+                        SetState(State.UPGRADING)
+                    else
+                        SetState(State.COLLECTING)
+                    end
                 else
                     SetState(State.COLLECTING)
                 end
@@ -1053,8 +1115,8 @@ local function AddInfo(k, v)
     r.Font = Enum.Font.GothamBold r.TextXAlignment = Enum.TextXAlignment.Right
 end
 AddInfo("Hub",    "ERDEVA HUB")
-AddInfo("Game",   "Chicken Farm")
+AddInfo("Game",   "Grow a Chicken Fighter")
 AddInfo("Player", player.DisplayName)
-AddInfo("Status", "User")
+AddInfo("Status", "Operational")
 
 SetTab("Farm")
