@@ -4,7 +4,6 @@ local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local StarterGui = game:GetService("StarterGui")
 local RunService = game:GetService("RunService")
-local MarketplaceService = game:GetService("MarketplaceService")
 
 local player = Players.LocalPlayer
 
@@ -45,7 +44,7 @@ local Flags = {
     AutoUpgradeFeeder   = false,
     AutoBuyFeeders      = false,
     AutoStartTower      = false,
-    AutoNoThanks        = true,
+    AutoNoThanks        = false,
     AutoStartChaos      = false,
 }
 
@@ -447,12 +446,12 @@ task.spawn(function()
                     end
                 end
             end
-            if (Flags.AutoStartTower or Flags.AutoRebirth) and not ChickenInTower and (tick() - LastTowerFinishedAt >= 5.0) then
+            if (Flags.AutoStartTower or Flags.AutoRebirth) and not ChickenInTower and (tick() - LastTowerFinishedAt >= 45.0) then
                 for _, b in ipairs(pg:GetDescendants()) do
                     if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
                         local text = ButtonText(b)
                         if (text:find("tower") or b.Name:lower() == "tower") and not text:find("rebirth") and not text:find("not yet") and not text:find("no thanks") then
-                            if CanRunAction("SendChickenTower", 5.0) then
+                            if CanRunAction("SendChickenTower", 120.0) then
                                 ClickGuiButton(b)
                                 ChickenInTower = true
                                 TowerSentTime = tick()
@@ -591,17 +590,31 @@ local MiniStroke = Instance.new("UIStroke", MiniIcon)
 MiniStroke.Color = C.Red MiniStroke.Thickness = 1.5
 
 local MiniImage = Instance.new("ImageLabel", MiniIcon)
-MiniImage.Size = UDim2.fromOffset(36, 36)
+MiniImage.Size = UDim2.fromOffset(40, 40)
 MiniImage.AnchorPoint = Vector2.new(0.5, 0.5)
 MiniImage.Position = UDim2.new(0.5, 0, 0.42, 0)
 MiniImage.BackgroundTransparency = 1
-MiniImage.Image = "rbxthumb://type=Asset&id=97227868899888&w=150&h=150"
+MiniImage.ScaleType = Enum.ScaleType.Fit
+MiniImage.ZIndex = 2
 
 task.spawn(function()
     pcall(function()
-        local info = MarketplaceService:GetProductInfo(97227868899888, Enum.InfoType.Asset)
-        if info and info.AssetId then
-            MiniImage.Image = "rbxassetid://" .. tostring(info.AssetId)
+        local rawUrl = "https://raw.githubusercontent.com/voxynoxy/ErdevaHub/main/erdeva.png"
+        local fileName = "erdeva_hub_logo.png"
+        local customAssetFunc = getsynasset or getcustomasset or (syn and syn.oth and syn.oth.custom_asset)
+        
+        if writefile and readfile and isfile and customAssetFunc then
+            if not isfile(fileName) then
+                local res = game:HttpGet(rawUrl)
+                if res and #res > 0 then
+                    writefile(fileName, res)
+                end
+            end
+            if isfile(fileName) then
+                MiniImage.Image = customAssetFunc(fileName)
+            end
+        else
+            MiniImage.Image = "rbxassetid://7733964719"
         end
     end)
 end)
@@ -615,11 +628,13 @@ MiniLabel.TextColor3 = C.Red
 MiniLabel.TextSize = 8
 MiniLabel.Font = Enum.Font.GothamBold
 MiniLabel.TextXAlignment = Enum.TextXAlignment.Center
+MiniLabel.ZIndex = 2
 
 local MiniBtn = Instance.new("TextButton", MiniIcon)
 MiniBtn.Size = UDim2.new(1,0,1,0)
 MiniBtn.BackgroundTransparency = 1
 MiniBtn.Text = ""
+MiniBtn.ZIndex = 3
 
 local MinBtn = Instance.new("TextButton", Top)
 MinBtn.Size = UDim2.fromOffset(24,24) MinBtn.Position = UDim2.new(1,-56,0.5,-12)
