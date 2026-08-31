@@ -1,4 +1,4 @@
--- [[ ERDEVA HUB v2.1 - REAL-TIME HEAD STACK SYNC ]]
+-- [[ ERDEVA HUB v2.3 - TOWER BATTLE & DIRECT REBIRTH ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -70,7 +70,7 @@ local function GetHumanoid()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
--- MENGHITUNG JUMLAH PLAT YANG MENEMPEL DI KEPALA KARAKTER
+-- HITUNG PLAT DI KEPALA KARAKTER
 local function GetPlatesOnCharacter()
     local char = GetChar()
     if not char then return 0 end
@@ -78,7 +78,6 @@ local function GetPlatesOnCharacter()
     for _, item in ipairs(char:GetChildren()) do
         if item:IsA("BasePart") then
             local n = item.Name:lower()
-            -- Abaikan anggota tubuh standar roblox
             if n ~= "humanoidrootpart" and n ~= "head" and n ~= "torso" and n ~= "uppertorso" and n ~= "lowertorso" and not n:find("arm") and not n:find("leg") and not n:find("hand") and not n:find("foot") then
                 count = count + 1
             end
@@ -97,11 +96,31 @@ local function GetTotalCarried()
     return CurrentBatchScraps
 end
 
+-- DETEKSI LEVEL AYAM (CONTOH: YB LV.47 DI KANAN ATAS)
+local function GetHighestChickenLevel()
+    local highest = 0
+    local pg = player:FindFirstChild("PlayerGui")
+    if pg then
+        for _, lbl in ipairs(pg:GetDescendants()) do
+            if lbl:IsA("TextLabel") and lbl.Visible then
+                local t = lbl.Text
+                local lv = t:match("[Ll][Vv]%.?%s*(%d+)") or t:match("[Ll][Ee][Vv][Ee][Ll]%s*(%d+)")
+                if lv then
+                    local num = tonumber(lv)
+                    if num and num > highest and num < 10000 then highest = num end
+                end
+            end
+        end
+    end
+    return highest
+end
+
 local State = {
     IDLE       = "IDLE",
     COLLECTING = "COLLECTING",
     RECYCLING  = "RECYCLING",
     UPGRADING  = "UPGRADING",
+    TOWER      = "TOWER",
     REBIRTH    = "REBIRTH",
     WAITING    = "WAITING",
 }
@@ -250,7 +269,7 @@ local function IsVisibleGui(obj)
     return true
 end
 
--- TUTUP POPUP NOT ENOUGH CASH
+-- TUTUP POPUP NOT ENOUGH CASH & ROBUR
 local function DismissAllPopups()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
@@ -315,7 +334,7 @@ local function TryClickGuiAction(actionName, patterns, cooldown)
     return false
 end
 
--- DETEKSI HANYA PLAT DI ARENA (BUKAN BANGUNAN BASE)
+-- DETEKSI PLAT SCRAP
 local function IsRealScrap(obj)
     if not obj:IsA("BasePart") or not obj.Parent then return false end
     
@@ -375,7 +394,6 @@ local function FindNearestArenaScrap()
     return best
 end
 
--- AMBIL LEMPENGAN PLAT
 local function CollectScrapPlate(scrap)
     if not scrap or not scrap.Parent then return false end
     local root = GetRoot()
@@ -387,16 +405,9 @@ local function CollectScrapPlate(scrap)
     FastTouch(scrap)
     TriggerNearbyPrompt("scrap", 10)
 
-    -- Plat berhasil diambil jika: parent berubah (nempel ke badan), atau parent nil, atau dekat sekali
-    local pickedUp = (not scrap.Parent) or scrap:IsDescendantOf(char) or FlatDist(root.Position, scrap.Position) <= 3.0
-    if pickedUp then
-        CurrentBatchScraps = CurrentBatchScraps + 1
-        BlacklistedScraps[scrap] = nil
-        return true
-    else
-        BlacklistedScraps[scrap] = tick()
-        return false
-    end
+    CurrentBatchScraps = CurrentBatchScraps + 1
+    BlacklistedScraps[scrap] = tick()
+    return true
 end
 
 -- CARI PAD DI BASE
@@ -486,7 +497,7 @@ local function ExecuteBasePad(actionName, keywords, guiPatterns, cooldown)
     return true
 end
 
--- RECYCLE SEMUA SCRAP DI BASE
+-- RECYCLE
 local function DoRecycleAtBase()
     if not CanRunAction("RecycleScrap", 1.5) then return false end
     
@@ -511,7 +522,7 @@ local function DoRecycleAtBase()
     return true
 end
 
--- BELI & UPGRADE FEEDER
+-- UPGRADES
 local function DoUpgrades()
     if Flags.AutoBuyFeeders or Flags.AutoRebirth then
         ExecuteBasePad("BuyFeeder", { "buy feeder", "new feeder", "feeder", "purchase feeder", "unlock feeder", "add feeder" }, { "buy feeder", "new feeder" }, 2.5)
@@ -531,34 +542,88 @@ local function DoUpgrades()
     DismissAllPopups()
 end
 
--- REBIRTH SYSTEM
+-- CEK APAKAH LAGI DI DALAM BATTLE TOWER
+local function IsInTowerBattle()
+    local pg = player:FindFirstChild("PlayerGui")
+    if not pg then return false end
+    for _, g in ipairs(pg:GetChildren()) do
+        if g:IsA("ScreenGui") and g.Enabled then
+            local n = g.Name:lower()
+            if n:find("battle") or n:find("tower") or n:find("fight") or n:find("arena") then
+                for _, el in ipairs(g:GetDescendants()) do
+                    if el:IsA("GuiObject") and IsVisibleGui(el) then
+                        local en = el.Name:lower()
+                        if en:find("health") or en:find("enemy") or en:find("round") or en:find("floor") then
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return false
+end
+
+-- MENJALANKAN TOWER BATTLE
+local function RunTowerBattle()
+    if not CanRunAction("TowerStartAction", 4) and not IsInTowerBattle() then return false end
+    
+    -- Klik tombol Tower di menu bawah atau GUI
+    TryClickGuiAction("StartTowerBtn", { "tower", "start tower", "battle", "enter" }, 2.5)
+    task.wait(0.8)
+    
+    local t0 = tick()
+    while IsRunning and (Flags.AutoStartTower or Flags.AutoRebirth) and tick() - t0 < 120 do
+        if Flags.AutoNoThanks then
+            TryClickGuiAction("NoThanks", { "no thanks", "nothanks", "skip" }, 1.0)
+        end
+        TryClickGuiAction("NextFloor", { "claim", "next floor", "victory", "continue", "next", "battle" }, 1.0)
+        
+        if not IsInTowerBattle() and tick() - t0 > 5 then
+            break
+        end
+        task.wait(0.4)
+    end
+    return true
+end
+
+-- REBIRTH SYSTEM SESUAI GAMBAR 2
 local function CheckAndDoRebirth()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
     
-    local ready = false
+    -- Buka menu Rebirth dari tombol api di kanan layar
+    TryClickGuiAction("OpenRebirthMenu", { "rebirth" }, 2.0)
+    task.wait(0.25)
+    
+    local canRebirth = false
+    local rebirthBtn = nil
+    
     for _, b in ipairs(pg:GetDescendants()) do
         if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
             local text = ButtonText(b)
-            if text:find("rebirth") and (text:find("ready") or text:find("claim") or text:find("available") or text:find("do rebirth") or b.Name:lower() == "rebirth") then
-                ready = true
-                break
+            -- Jangan klik jika tombol masih "NOT YET"
+            if not text:find("not yet") and not text:find("milestones") and not text:find("auto rebirth") then
+                if text:find("rebirth") or text:find("claim") or text:find("do rebirth") or text:find("yes") then
+                    canRebirth = true
+                    rebirthBtn = b
+                    break
+                end
             end
         end
     end
     
-    if ready and CanRunAction("Rebirth", 5) then
-        TryClickGuiAction("RebirthOpen", { "rebirth" }, 1.5)
+    if canRebirth and rebirthBtn and CanRunAction("ExecuteRebirth", 5) then
+        ClickGuiButton(rebirthBtn)
         task.wait(0.3)
-        local ok = TryClickGuiAction("RebirthConfirm", { "confirm", "yes", "do rebirth", "claim rebirth", "rebirth" }, 1.5)
-        if ok then
-            task.wait(1.5)
-            CurrentBatchScraps = 0
-            table.clear(BlacklistedScraps)
-            table.clear(ActionCooldowns)
-            return true
-        end
+        TryClickGuiAction("RebirthConfirm", { "confirm", "yes", "do rebirth" }, 1.5)
+        task.wait(1.5)
+        CurrentBatchScraps = 0
+        table.clear(BlacklistedScraps)
+        table.clear(ActionCooldowns)
+        return true
     end
+    
     return false
 end
 
@@ -572,11 +637,11 @@ local function GetArenaCenter()
     return nil
 end
 
--- MAIN AUTOMATION LOOP
+-- LOOP UTAMA
 task.spawn(function()
     while IsRunning do
         pcall(function()
-            local active = Flags.AutoRebirth or Flags.AutoGrabScraps or Flags.AutoRecycleScrap
+            local active = Flags.AutoRebirth or Flags.AutoGrabScraps or Flags.AutoRecycleScrap or Flags.AutoStartTower
             if not active then
                 SetState(State.IDLE)
                 task.wait(0.3)
@@ -591,17 +656,31 @@ task.spawn(function()
                 return
             end
             
+            -- 1. PRIORITAS TOWER: CEK LEVEL AYAM & JALANKAN TOWER JIKA SUDAH TERCAPAI
+            local curLv = GetHighestChickenLevel()
+            local reqLv = tonumber(Flags.TowerMinLevel) or 50
+            if (Flags.AutoStartTower or Flags.AutoRebirth) and (curLv >= reqLv or IsInTowerBattle()) then
+                SetState(State.TOWER)
+                RunTowerBattle()
+                SetState(State.COLLECTING)
+                return
+            end
+            
+            -- 2. PRIORITAS REBIRTH
+            if Flags.AutoRebirth then
+                CheckAndDoRebirth()
+            end
+            
             local targetCap = tonumber(Flags.ScrapCapacity) or 20
             local currentTotal = GetTotalCarried()
             
-            -- SIKLUS 1: AMBIL PLAT DI ARENA SAMPAI TUMPUKAN TERCAPAI (20)
+            -- 3. SIKLUS FARMING SCRAP DI ARENA
             if currentTotal < targetCap then
                 SetState(State.COLLECTING)
                 local scrap = FindNearestArenaScrap()
                 if scrap then
                     CollectScrapPlate(scrap)
                 else
-                    -- Lari ke Arena jika sedang di Base!
                     local arenaPos = GetArenaCenter()
                     if arenaPos and FlatDist(root.Position, arenaPos) > 20 then
                         WalkTo(arenaPos, 3.5, 6.0)
@@ -610,21 +689,18 @@ task.spawn(function()
                     end
                 end
             else
-                -- SIKLUS 2: PULANG RECYCLE DI BASE
+                -- 4. RECYCLE DI BASE & UPGRADE
                 SetState(State.RECYCLING)
                 DoRecycleAtBase()
                 
-                -- SIKLUS 3: UPGRADE FEEDER
                 SetState(State.UPGRADING)
                 DoUpgrades()
                 
-                -- SIKLUS 4: CEK REBIRTH
                 if Flags.AutoRebirth then
                     SetState(State.REBIRTH)
                     CheckAndDoRebirth()
                 end
                 
-                -- Kembali ke Arena!
                 SetState(State.COLLECTING)
             end
         end)
@@ -664,7 +740,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.1</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.3 (Tower & Rebirth)</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -880,4 +956,4 @@ task.spawn(function()
     end
 end)
 
-SetTab("Plot")
+SetTab("Battle")
