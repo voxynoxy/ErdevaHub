@@ -44,7 +44,7 @@ local Flags = {
     AutoUpgradeFeeder   = false,
     AutoBuyFeeders      = false,
     AutoStartTower      = false,
-    AutoNoThanks        = true,
+    AutoNoThanks        = false,
     AutoStartChaos      = false,
 }
 
@@ -446,12 +446,12 @@ task.spawn(function()
                     end
                 end
             end
-            if (Flags.AutoStartTower or Flags.AutoRebirth) and not ChickenInTower and (tick() - LastTowerFinishedAt >= 5.0) then
+            if (Flags.AutoStartTower or Flags.AutoRebirth) and not ChickenInTower and (tick() - LastTowerFinishedAt >= 120.0) then
                 for _, b in ipairs(pg:GetDescendants()) do
                     if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
                         local text = ButtonText(b)
                         if (text:find("tower") or b.Name:lower() == "tower") and not text:find("rebirth") and not text:find("not yet") and not text:find("no thanks") then
-                            if CanRunAction("SendChickenTower", 5.0) then
+                            if CanRunAction("SendChickenTower", 30.0) then
                                 ClickGuiButton(b)
                                 ChickenInTower = true
                                 TowerSentTime = tick()
@@ -594,7 +594,7 @@ MiniImage.Size = UDim2.fromOffset(36, 36)
 MiniImage.AnchorPoint = Vector2.new(0.5, 0.5)
 MiniImage.Position = UDim2.new(0.5, 0, 0.42, 0)
 MiniImage.BackgroundTransparency = 1
-MiniImage.Image = "http://www.roblox.com/asset/?id=6031075938"
+MiniImage.Image = "rbxassetid://97227868899888"
 MiniImage.ImageColor3 = Color3.fromRGB(240, 240, 240)
 
 local MiniLabel = Instance.new("TextLabel", MiniIcon)
