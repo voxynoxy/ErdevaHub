@@ -1,4 +1,4 @@
--- [[ ERDEVA HUB v1.3 - USER CONTROLLED & ACCURATE CAPACITY ]]
+-- [[ ERDEVA HUB v1.3 - FULL COMPLETED SCRIPT ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -29,7 +29,7 @@ local function tw(o, p, t)
     TweenService:Create(o, TweenInfo.new(t or 0.15), p):Play()
 end
 
--- SEMUA DEFAULT MATI (FALSE) AGAR USER YANG MEMILIH
+-- SEMUA DEFAULT MATI (FALSE) - USER YANG MENENTUKAN
 local Flags = {
     AutoOpenEggs        = false,
     AutoGrabScraps      = false,
@@ -58,13 +58,6 @@ local function GetHumanoid()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
-local DEBUG = false
-local function Debug(...)
-    if DEBUG then
-        print("[ERDEVA]", ...)
-    end
-end
-
 local State = {
     IDLE       = "IDLE",
     COLLECTING = "COLLECTING",
@@ -77,15 +70,12 @@ local State = {
 
 local CurrentState = State.IDLE
 local StateStartedAt = tick()
-local ActionBusy = false
 local ActionCooldowns = {}
 local GuiCooldowns = {}
 local collectedScraps = 0
 local BlacklistedScraps = {}
 local CurrentTargetScrap = nil
 local LastPopupDismiss = 0
-local LastRemoteScan = 0
-local RemoteCache = {}
 
 local STATE_TIMEOUTS = {
     [State.COLLECTING] = 8,
@@ -100,7 +90,6 @@ local function SetState(newState)
     if CurrentState ~= newState then
         CurrentState = newState
         StateStartedAt = tick()
-        Debug("STATE ->", newState)
     end
 end
 
@@ -298,7 +287,7 @@ local function TryClickGuiAction(actionName, patterns, cooldown)
     return false
 end
 
--- Deteksi Akurat Scrap Count (Tidak salah baca ScrapLevel / Multiplier)
+-- Deteksi Akurat Scrap Count
 local function GetActualScrapCount()
     local containers = { player:FindFirstChild("leaderstats"), player:FindFirstChild("Stats"), player:FindFirstChild("Data") }
     for _, container in ipairs(containers) do
@@ -318,7 +307,7 @@ local function GetActualScrapCount()
             if lbl:IsA("TextLabel") and IsVisibleGui(lbl) then
                 local text = lbl.Text:lower()
                 if text:find("scrap") and not (text:find("level") or text:find("upgrade") or text:find("multiplier") or text:find("tier") or text:find("cost")) then
-                    local cur, maxVal = text:match("(%d+)%s*/%s*(%d+)")
+                    local cur, _ = text:match("(%d+)%s*/%s*(%d+)")
                     if cur then
                         return tonumber(cur), true
                     end
@@ -697,7 +686,7 @@ task.spawn(function()
                     TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 2)
                 end
                 
-                -- HANYA RECYCLE JIKA JUMLAH SCRAP SUDAH MENCAPAI CAPACITY
+                -- HANYA RECYCLE JIKA SUDAH MENCAPAI CAPACITY
                 if Flags.AutoRecycleScrap and count >= cap then
                     SetState(State.RECYCLING)
                     return
