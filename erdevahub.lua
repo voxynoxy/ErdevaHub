@@ -1,9 +1,10 @@
--- [[ ERDEVA HUB v3.8 - FIXED BATTLE & UPGRADE RECYCLER ONLY ]]
+-- [[ ERDEVA HUB v2.5 ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local StarterGui = game:GetService("StarterGui")
+local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 
@@ -72,6 +73,19 @@ local function GetHumanoid()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
+-- FULL NOCLIP REAL-TIME SETIAP FRAME (TEMBUS SEMUA PAGAR & OBJEK)
+RunService.Stepped:Connect(function()
+    if not IsRunning then return end
+    local char = player.Character
+    if char then
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
+end)
+
 local State = {
     IDLE       = "IDLE",
     COLLECTING = "COLLECTING",
@@ -101,22 +115,11 @@ local function CanRunAction(action, cooldown)
     return true
 end
 
-local function ApplyNoCollision(char)
-    if not char then return end
-    for _, part in ipairs(char:GetDescendants()) do
-        if part:IsA("BasePart") then
-            part.CanCollide = false
-        end
-    end
-end
-
 player.CharacterAdded:Connect(function(char)
     task.wait(0.5)
     CurrentBatchScraps = 0
     ChickenInTower = false
-    if IsRunning then ApplyNoCollision(char) end
 end)
-ApplyNoCollision(GetChar())
 
 local function FlatDist(a, b)
     return Vector2.new(a.X - b.X, a.Z - b.Z).Magnitude
@@ -488,6 +491,13 @@ local function DoRecycleAtBase()
     if root and FlatDist(root.Position, targetPos) <= 4.0 then
         CurrentBatchScraps = 0
         table.clear(BlacklistedScraps)
+        
+        -- LANGSUNG PICU UPGRADE RECYCLER SAAT BERDIRI DI RECYCLER PAD
+        if Flags.AutoUpgradeRecycler or Flags.AutoRebirth then
+            TriggerNearbyPrompt("upgrade", 14)
+            TriggerNearbyPrompt("recycler", 14)
+            TryClickGuiAction("UpgradeRecycler", { "upgrade recycler", "upgrade speed", "upgrade level" }, 1.5)
+        end
     end
     
     DismissAllPopups()
@@ -516,7 +526,7 @@ local function DoUpgrades()
     DismissAllPopups()
 end
 
--- BACKGROUND THREAD UNTUK TOWER & AUTO NO THANKS (TIDAK MENGGANGGU FARMING SCRAP)
+-- BACKGROUND THREAD UNTUK TOWER & AUTO NO THANKS
 task.spawn(function()
     while IsRunning do
         pcall(function()
@@ -707,7 +717,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v3.8 (Fixed)</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.5</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
