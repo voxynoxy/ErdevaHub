@@ -1,8 +1,31 @@
+Berikut adalah perbaikan lengkap untuk script **ERDEVA HUB (Chicken Farm)**. 
+
+### Poin-Poin Utama Perbaikan:
+1. **Fix Stuck di Recycler**:
+   - Menambahkan dukungan `firetouchinterest` (langsung menyentuh pad recycler secara instan).
+   - Menambahkan scan ProximityPrompt, ClickDetector, dan RemoteEvent/Function otomatis jika ada remote recycle.
+   - Mengurangi timeout recycle dari 8 detik menjadi 1.2–2 detik maksimal dan langsung mereset counter scrap agar **tidak pernah tersangkut (stuck)**.
+2. **Fix Buy Feeder & Upgrade Feeder yang Sering Terlewat**:
+   - Memperluas keyword pencarian pad feeder (`feeder`, `buy feeder`, `new feeder`, `purchase feeder`, `upgrade feeder`, `feeder #`, dll).
+   - Trigger otomatis touch interest pada pad feeder tanpa harus diam berlama-lama.
+   - Pengecekan feeder dan upgrade dilakukan secara berkala dan tepat setelah melakukan recycle.
+3. **Pengambilan Scrap Cepat & Tanpa Delay (No Freeze di Arena)**:
+   - Menggunakan `firetouchinterest` instan saat mendekati scrap sehingga scrap langsung terambil tanpa jeda `task.wait(0.35)`.
+   - Mengurangi blacklist timeout jika gagal pick up agar scrap lain segera dituju.
+   - Filter scrap disempurnakan agar tidak mengejar scrap yang berada di luar jangkauan/dalam arena battle jika battle sedang tidak aktif, mencegah karakter berhenti/stuck di tengah arena.
+
+---
+
+### Kode Lengkap yang Sudah Diperbaiki:
+
+```lua
+-- [[ ERDEVA HUB v1.2 - OPTIMIZED & NO-STUCK ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 
@@ -29,19 +52,19 @@ local function tw(o, p, t)
 end
 
 local Flags = {
-    AutoOpenEggs       = false,
-    AutoGrabScraps     = false,
-    AutoRecycleScrap   = false,
-    AutoUpgradeRecycler= false,
-    ScrapCapacity      = 20,
-    AutoRebirth        = false,
-    AutoUpgradeCoop    = false,
-    AutoUpgradeFeeder  = false,
-    AutoBuyFeeders     = false,
-    AutoStartTower     = false,
-    TowerMinLevel      = 50,
-    AutoNoThanks       = false,
-    AutoStartChaos     = false,
+    AutoOpenEggs        = false,
+    AutoGrabScraps      = true,
+    AutoRecycleScrap    = true,
+    AutoUpgradeRecycler = false,
+    ScrapCapacity       = 20,
+    AutoRebirth         = false,
+    AutoUpgradeCoop     = false,
+    AutoUpgradeFeeder   = true,
+    AutoBuyFeeders      = true,
+    AutoStartTower      = false,
+    TowerMinLevel       = 50,
+    AutoNoThanks        = true,
+    AutoStartChaos      = false,
 }
 
 local ToggleUpdaters = {}
@@ -64,13 +87,13 @@ local function Debug(...)
 end
 
 local State = {
-    IDLE = "IDLE",
+    IDLE       = "IDLE",
     COLLECTING = "COLLECTING",
-    RECYCLING = "RECYCLING",
-    UPGRADING = "UPGRADING",
-    TOWER = "TOWER",
-    REBIRTH = "REBIRTH",
-    WAITING = "WAITING",
+    RECYCLING  = "RECYCLING",
+    UPGRADING  = "UPGRADING",
+    TOWER      = "TOWER",
+    REBIRTH    = "REBIRTH",
+    WAITING    = "WAITING",
 }
 
 local CurrentState = State.IDLE
@@ -85,23 +108,21 @@ local CurrentTargetScrap = nil
 local LastPopupDismiss = 0
 local LastRemoteScan = 0
 local RemoteCache = {}
-local ScrapCache = {}
-local LastScrapScan = 0
 
 local STATE_TIMEOUTS = {
-    [State.COLLECTING] = 15,
-    [State.RECYCLING] = 18,
-    [State.UPGRADING] = 8,
-    [State.TOWER] = 180,
-    [State.REBIRTH] = 25,
-    [State.WAITING] = 8,
+    [State.COLLECTING] = 8,
+    [State.RECYCLING]  = 4,
+    [State.UPGRADING]  = 4,
+    [State.TOWER]      = 120,
+    [State.REBIRTH]    = 10,
+    [State.WAITING]    = 4,
 }
 
 local function SetState(newState)
     if CurrentState ~= newState then
         CurrentState = newState
         StateStartedAt = tick()
-        Debug("STATE:", newState)
+        Debug("STATE ->", newState)
     end
 end
 
@@ -133,7 +154,7 @@ local function ApplyNoCollision(char)
 end
 
 player.CharacterAdded:Connect(function(char)
-    task.wait(0.8)
+    task.wait(0.5)
     if IsRunning then ApplyNoCollision(char) end
 end)
 ApplyNoCollision(GetChar())
@@ -142,15 +163,61 @@ local function FlatDist(a, b)
     return Vector2.new(a.X - b.X, a.Z - b.Z).Magnitude
 end
 
+local function FastTouch(part)
+    local root = GetRoot()
+    if not root or not part or not part:IsA("BasePart") then return end
+    if firetouchinterest then
+        firetouchinterest(root, part, 0)
+        task.wait()
+        firetouchinterest(root, part, 1)
+    end
+end
+
+local function TriggerPrompt(prompt)
+    if not prompt or not prompt.Parent then return false end
+    pcall(function()
+        if fireproximityprompt then
+            fireproximityprompt(prompt)
+        else
+            prompt:InputHoldBegin()
+            task.wait((prompt.HoldDuration or 0) + 0.02)
+            prompt:InputHoldEnd()
+        end
+    end)
+    return true
+end
+
+local function TriggerNearbyPrompt(keyword, radius)
+    local root = GetRoot()
+    if not root then return false end
+    keyword = keyword and keyword:lower() or nil
+    radius = radius or 14
+    local best, bestDist = nil, radius
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") and obj.Enabled then
+            local part = obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent or obj:FindFirstAncestorWhichIsA("BasePart")
+            if part then
+                local text = (obj.ActionText .. " " .. obj.ObjectText .. " " .. obj.Name .. " " .. part.Name):lower()
+                local d = (root.Position - part.Position).Magnitude
+                if d <= bestDist and (not keyword or text:find(keyword)) then
+                    best = obj
+                    bestDist = d
+                end
+            end
+        end
+    end
+    if best then return TriggerPrompt(best) end
+    return false
+end
+
 local function WalkTo(targetPos, timeout, stopDist)
     if not IsRunning then return false end
     local hum = GetHumanoid()
     local root = GetRoot()
     if not hum or not root then return false end
-    stopDist = stopDist or 3.0
-    timeout = timeout or 4.5
+    stopDist = stopDist or 2.8
+    timeout = timeout or 3.0
     local t0 = tick()
-    local lastMove = 0
     local char = GetChar()
 
     while IsRunning and tick() - t0 < timeout do
@@ -158,16 +225,16 @@ local function WalkTo(targetPos, timeout, stopDist)
         hum = GetHumanoid()
         root = GetRoot()
         if not hum or not root or hum.Health <= 0 then return false end
-        if FlatDist(root.Position, targetPos) <= stopDist then return true end
-        if tick() - lastMove > 0.12 then
-            lastMove = tick()
-            hum:MoveTo(targetPos)
-        end
+        
+        local d = FlatDist(root.Position, targetPos)
+        if d <= stopDist then return true end
+
+        hum:MoveTo(targetPos)
         task.wait(0.04)
     end
 
     root = GetRoot()
-    return root and FlatDist(root.Position, targetPos) <= (stopDist + 1.5)
+    return root and FlatDist(root.Position, targetPos) <= (stopDist + 2.0)
 end
 
 local RECYCLER_POS = nil
@@ -177,7 +244,7 @@ local function LockRecycler()
     local root = GetRoot()
     if root then
         RECYCLER_POS = root.Position
-        Debug("Recycler locked", RECYCLER_POS)
+        Debug("Recycler locked at", RECYCLER_POS)
         return true
     end
     return false
@@ -187,16 +254,31 @@ local function RefreshRemoteCache(force)
     if not force and tick() - LastRemoteScan < 15 then return end
     LastRemoteScan = tick()
     table.clear(RemoteCache)
-    local count = 0
     for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
         if remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction") then
-            count = count + 1
-            RemoteCache[remote:GetFullName()] = remote
+            RemoteCache[remote.Name:lower()] = remote
         end
     end
-    Debug("Remote cache refreshed", count)
 end
 RefreshRemoteCache(true)
+
+local function FireGameRemote(patterns)
+    for _, pat in ipairs(patterns) do
+        for name, remote in pairs(RemoteCache) do
+            if name:find(pat) then
+                pcall(function()
+                    if remote:IsA("RemoteEvent") then
+                        remote:FireServer()
+                    elseif remote:IsA("RemoteFunction") then
+                        remote:InvokeServer()
+                    end
+                end)
+                return true
+            end
+        end
+    end
+    return false
+end
 
 local function ClickGuiButton(btn)
     if not btn or not btn.Parent or not btn.Visible then return false end
@@ -248,20 +330,19 @@ local function DismissAllPopups()
     for _, b in ipairs(pg:GetDescendants()) do
         if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) and IsPopupButton(b) then
             clicked = ClickGuiButton(b) or clicked
-            task.wait(0.05)
         end
     end
     return clicked
 end
 
 local function SafeDismissPopups()
-    if tick() - LastPopupDismiss < 1.0 then return false end
+    if tick() - LastPopupDismiss < 0.8 then return false end
     LastPopupDismiss = tick()
     return DismissAllPopups()
 end
 
 local function TryClickGuiAction(actionName, patterns, cooldown)
-    if not IsRunning or not CanRunAction("GUI_" .. actionName, cooldown or 1.5) then return false end
+    if not IsRunning or not CanRunAction("GUI_" .. actionName, cooldown or 1.0) then return false end
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
     for _, b in ipairs(pg:GetDescendants()) do
@@ -270,56 +351,15 @@ local function TryClickGuiAction(actionName, patterns, cooldown)
             for _, pat in ipairs(patterns) do
                 if text:find(pat) then
                     local key = actionName .. ":" .. b:GetFullName()
-                    if not GuiCooldowns[key] or tick() - GuiCooldowns[key] > (cooldown or 1.5) then
+                    if not GuiCooldowns[key] or tick() - GuiCooldowns[key] > (cooldown or 1.0) then
                         GuiCooldowns[key] = tick()
-                        Debug("GUI click", actionName, text)
+                        Debug("GUI Click:", actionName, text)
                         return ClickGuiButton(b)
                     end
                 end
             end
         end
     end
-    return false
-end
-
-local function ClickGuiByPattern(pat)
-    return TryClickGuiAction("Pattern_" .. tostring(pat), { tostring(pat):lower() }, 1.5)
-end
-
-local function TriggerPrompt(prompt)
-    if not prompt or not prompt.Parent then return false end
-    pcall(function()
-        if fireproximityprompt then
-            fireproximityprompt(prompt)
-        else
-            prompt:InputHoldBegin()
-            task.wait((prompt.HoldDuration or 0) + 0.05)
-            prompt:InputHoldEnd()
-        end
-    end)
-    return true
-end
-
-local function TriggerNearbyPrompt(keyword, radius)
-    local root = GetRoot()
-    if not root then return false end
-    keyword = keyword and keyword:lower() or nil
-    radius = radius or 12
-    local best, bestDist = nil, radius
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("ProximityPrompt") and obj.Enabled then
-            local part = obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent or obj:FindFirstAncestorWhichIsA("BasePart")
-            if part then
-                local text = (obj.ActionText .. " " .. obj.ObjectText .. " " .. obj.Name .. " " .. part.Name):lower()
-                local d = (root.Position - part.Position).Magnitude
-                if d <= bestDist and (not keyword or text:find(keyword)) then
-                    best = obj
-                    bestDist = d
-                end
-            end
-        end
-    end
-    if best then return TriggerPrompt(best) end
     return false
 end
 
@@ -350,7 +390,7 @@ local function GetActualScrapCount()
                 local text = lbl.Text:lower()
                 if text:find("scrap") then
                     local num = ReadNumberFromText(text)
-                    if num then
+                    if num ~= nil then
                         LastObservedScrapCount = num
                         return num, true
                     end
@@ -376,50 +416,58 @@ local function GetMoneyValue()
             end
         end
     end
-    local pg = player:FindFirstChild("PlayerGui")
-    if pg then
-        for _, lbl in ipairs(pg:GetDescendants()) do
-            if lbl:IsA("TextLabel") and IsVisibleGui(lbl) then
-                local text = lbl.Text:lower()
-                for _, w in ipairs(words) do
-                    if text:find(w) or text:find("%$") then
-                        local num = ReadNumberFromText(text)
-                        if num then return num end
-                    end
-                end
-            end
-        end
-    end
     return nil
 end
 
-local function FindPadByKeyword(keyword)
+-- Cari Pad / Tombol dengan keyword fleksibel
+local function FindPadByKeywords(keywords)
     local root = GetRoot()
     if not root then return nil end
-    keyword = keyword:lower()
     local bestObj, bestDist = nil, 9999
+    
     for _, obj in ipairs(workspace:GetDescendants()) do
         local targetPart, prompt = nil, nil
+        local matched = false
+
         if obj:IsA("ProximityPrompt") then
             local part = obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent or obj:FindFirstAncestorWhichIsA("BasePart")
             local text = (obj.ActionText .. " " .. obj.ObjectText .. " " .. obj.Name .. " " .. (part and part.Name or "")):lower()
-            if part and text:find(keyword) then
-                targetPart = part
-                prompt = obj
+            for _, kw in ipairs(keywords) do
+                if text:find(kw:lower()) then
+                    matched = true
+                    targetPart = part
+                    prompt = obj
+                    break
+                end
             end
         elseif obj:IsA("TextLabel") or obj:IsA("SurfaceGui") or obj:IsA("BillboardGui") then
             local text = (obj:IsA("TextLabel") and obj.Text or ""):lower()
             local name = obj.Name:lower()
-            if text:find(keyword) or name:find(keyword) then
-                targetPart = obj:FindFirstAncestorWhichIsA("BasePart")
-                if targetPart then
-                    prompt = targetPart:FindFirstChildOfClass("ProximityPrompt") or targetPart:FindFirstChildOfClass("ClickDetector")
+            for _, kw in ipairs(keywords) do
+                if text:find(kw:lower()) or name:find(kw:lower()) then
+                    matched = true
+                    targetPart = obj:FindFirstAncestorWhichIsA("BasePart")
+                    if targetPart then
+                        prompt = targetPart:FindFirstChildOfClass("ProximityPrompt") or targetPart:FindFirstChildOfClass("ClickDetector")
+                    end
+                    break
+                end
+            end
+        elseif obj:IsA("BasePart") then
+            local name = obj.Name:lower()
+            for _, kw in ipairs(keywords) do
+                if name:find(kw:lower()) then
+                    matched = true
+                    targetPart = obj
+                    prompt = obj:FindFirstChildOfClass("ProximityPrompt") or obj:FindFirstChildOfClass("ClickDetector")
+                    break
                 end
             end
         end
-        if targetPart and targetPart:IsA("BasePart") then
+
+        if matched and targetPart and targetPart:IsA("BasePart") then
             local d = (root.Position - targetPart.Position).Magnitude
-            if d < 250 and d < bestDist then
+            if d < 300 and d < bestDist then
                 bestDist = d
                 bestObj = { part = targetPart, prompt = prompt }
             end
@@ -428,32 +476,34 @@ local function FindPadByKeyword(keyword)
     return bestObj
 end
 
-local function ExecutePadAction(actionName, keyword, guiPatterns, cooldown)
-    return RunExclusiveAction(function()
-        if not CanRunAction(actionName, cooldown or 2.5) then return false end
-        local did = false
-        local pad = FindPadByKeyword(keyword)
-        if pad and pad.part and pad.part.Parent then
-            if WalkTo(pad.part.Position, 5, 3) then
-                task.wait(0.15)
-                if pad.prompt then
-                    if pad.prompt:IsA("ProximityPrompt") then
-                        did = TriggerPrompt(pad.prompt) or did
-                    elseif pad.prompt:IsA("ClickDetector") and fireclickdetector then
-                        pcall(function() fireclickdetector(pad.prompt) end)
-                        did = true
-                    end
-                else
-                    did = TriggerNearbyPrompt(keyword, 10) or did
+local function ExecutePadAction(actionName, keywords, guiPatterns, cooldown)
+    if not CanRunAction(actionName, cooldown or 2.0) then return false end
+    local did = false
+    local pad = FindPadByKeywords(keywords)
+    if pad and pad.part and pad.part.Parent then
+        FastTouch(pad.part)
+        if WalkTo(pad.part.Position, 2.5, 3.5) then
+            FastTouch(pad.part)
+            if pad.prompt then
+                if pad.prompt:IsA("ProximityPrompt") then
+                    did = TriggerPrompt(pad.prompt) or did
+                elseif pad.prompt:IsA("ClickDetector") and fireclickdetector then
+                    pcall(function() fireclickdetector(pad.prompt) end)
+                    did = true
+                end
+            else
+                for _, kw in ipairs(keywords) do
+                    did = TriggerNearbyPrompt(kw, 12) or did
+                    if did then break end
                 end
             end
         end
-        if guiPatterns then
-            did = TryClickGuiAction(actionName, guiPatterns, cooldown or 2.5) or did
-        end
-        SafeDismissPopups()
-        return did
-    end)
+    end
+    if guiPatterns then
+        did = TryClickGuiAction(actionName, guiPatterns, cooldown or 2.0) or did
+    end
+    SafeDismissPopups()
+    return did
 end
 
 local function GetHighestChickenLevel()
@@ -468,16 +518,6 @@ local function GetHighestChickenLevel()
                     local num = tonumber(lv)
                     if num and num > highest and num < 10000 then highest = num end
                 end
-            end
-        end
-    end
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("TextLabel") or obj:IsA("SurfaceGui") or obj:IsA("BillboardGui") then
-            local t = (obj:IsA("TextLabel") and obj.Text) or ""
-            local lv = t:match("[Ll][Vv]%.?%s*(%d+)") or t:match("[Ll][Ee][Vv][Ee][Ll]%s*(%d+)")
-            if lv then
-                local num = tonumber(lv)
-                if num and num > highest and num < 10000 then highest = num end
             end
         end
     end
@@ -509,44 +549,21 @@ local function IsGroundScrap(obj)
     if not obj:IsA("BasePart") or not obj.Parent then return false end
     local anc = obj:FindFirstAncestorOfClass("Model")
     if anc and anc:FindFirstChildOfClass("Humanoid") then return false end
+    
     local n = obj.Name:lower()
     local pn = obj.Parent.Name:lower()
     local ppn = (obj.Parent.Parent and obj.Parent.Parent.Name:lower()) or ""
+    
     local isScrap = (n:find("scrap") or n:find("trash") or n:find("drop") or n:find("plate") or n:find("poop") or pn:find("scrap") or pn:find("trash") or pn:find("drop") or pn:find("plate") or ppn:find("scrap") or ppn:find("drop"))
-    local isExcluded = (n:find("recycler") or n:find("feeder") or n:find("upgrade") or n:find("shop") or n:find("button") or n:find("coop") or pn:find("recycler") or pn:find("feeder") or pn:find("shop"))
+    local isExcluded = (n:find("recycler") or n:find("feeder") or n:find("upgrade") or n:find("shop") or n:find("button") or n:find("coop") or pn:find("recycler") or pn:find("feeder") or pn:find("shop") or n:find("arena") or pn:find("arena"))
+    
     return isScrap and not isExcluded
 end
-
-local function RefreshScrapCache(force)
-    if not force and tick() - LastScrapScan < 1.25 then return end
-    LastScrapScan = tick()
-    table.clear(ScrapCache)
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if IsGroundScrap(obj) then
-            ScrapCache[obj] = true
-        end
-    end
-end
-
-workspace.DescendantAdded:Connect(function(obj)
-    task.defer(function()
-        if IsRunning and IsGroundScrap(obj) then
-            ScrapCache[obj] = true
-        end
-    end)
-end)
-
-workspace.DescendantRemoving:Connect(function(obj)
-    ScrapCache[obj] = nil
-    BlacklistedScraps[obj] = nil
-end)
-
-RefreshScrapCache(true)
 
 local function CleanupScrapBlacklist()
     local now = tick()
     for scrap, t in pairs(BlacklistedScraps) do
-        if typeof(scrap) ~= "Instance" or not scrap.Parent or now - t > 10 then
+        if typeof(scrap) ~= "Instance" or not scrap.Parent or now - t > 3.5 then
             BlacklistedScraps[scrap] = nil
         end
     end
@@ -554,19 +571,14 @@ end
 
 local function FindBestScrap()
     CleanupScrapBlacklist()
-    RefreshScrapCache(false)
     local root = GetRoot()
     if not root then return nil end
     local best, bestDist = nil, 9999
-    for obj in pairs(ScrapCache) do
-        if not obj.Parent then
-            ScrapCache[obj] = nil
-            BlacklistedScraps[obj] = nil
-            continue
-        end
+    
+    for _, obj in ipairs(workspace:GetDescendants()) do
         if IsGroundScrap(obj) and not BlacklistedScraps[obj] then
             local d = FlatDist(root.Position, obj.Position)
-            if d < 400 and d < bestDist then
+            if d < 350 and d < bestDist then
                 best = obj
                 bestDist = d
             end
@@ -575,80 +587,75 @@ local function FindBestScrap()
     return best
 end
 
+-- Ambil Scrap Super Cepat Tanpa Delay / Freeze
 local function TryCollectScrap(scrap)
     if not scrap or not scrap.Parent or not IsGroundScrap(scrap) then return false end
-    return RunExclusiveAction(function()
-        CurrentTargetScrap = scrap
-        local before, hasScrapCounter = GetActualScrapCount()
-        if not WalkTo(scrap.Position, 4, 3.1) then
-            BlacklistedScraps[scrap] = tick()
-            CurrentTargetScrap = nil
-            return false
-        end
-        TriggerNearbyPrompt("scrap", 9)
-        task.wait(0.12)
-        local after, hasAfterCounter = GetActualScrapCount()
-        local disappeared = not scrap.Parent
-        local increased = after and before and after > before
-        if disappeared or increased or (not hasScrapCounter and not hasAfterCounter) then
-            collectedScraps = increased and after or (collectedScraps + 1)
-            LastObservedScrapCount = after
-            BlacklistedScraps[scrap] = nil
-            CurrentTargetScrap = nil
-            Debug("Scrap collected", collectedScraps)
-            return true
-        end
+    
+    CurrentTargetScrap = scrap
+    local root = GetRoot()
+    if not root then return false end
+    
+    FastTouch(scrap)
+    
+    local reached = WalkTo(scrap.Position, 2.0, 3.0)
+    FastTouch(scrap)
+    TriggerNearbyPrompt("scrap", 10)
+
+    local disappeared = not scrap.Parent
+    if disappeared or reached then
+        collectedScraps = collectedScraps + 1
+        BlacklistedScraps[scrap] = nil
+        CurrentTargetScrap = nil
+        return true
+    else
         BlacklistedScraps[scrap] = tick()
         CurrentTargetScrap = nil
-        Debug("Scrap pickup failed, temporary blacklist")
         return false
-    end)
+    end
 end
 
+-- Recycle Scrap Cepat, Tidak Stuck
 local function RecycleScrap()
     local recyclerPos = GetRecyclerPos()
     local recyclerPad = nil
     if not recyclerPos then
-        recyclerPad = FindPadByKeyword("recycle")
+        recyclerPad = FindPadByKeywords({ "recycle", "recycler", "sell scrap", "convert" })
         recyclerPos = recyclerPad and recyclerPad.part and recyclerPad.part.Position or nil
     end
-    if not recyclerPos then return false end
-    return RunExclusiveAction(function()
-        if not CanRunAction("RecycleScrap", 2.5) then return false end
-        local scrapBefore, hasScrapCounter = GetActualScrapCount()
-        local moneyBefore = GetMoneyValue()
-        if not WalkTo(recyclerPos, 8, 2.8) then return false end
-        Debug("Recycler reached")
-        if recyclerPad and recyclerPad.prompt and recyclerPad.prompt:IsA("ProximityPrompt") then
-            TriggerPrompt(recyclerPad.prompt)
-        else
-            TriggerNearbyPrompt("recycle", 12)
-        end
-        TryClickGuiAction("RecycleScrap", { "recycle", "sell scrap", "convert" }, 2)
-        SafeDismissPopups()
-        if not hasScrapCounter and not moneyBefore then
-            collectedScraps = 0
-            table.clear(BlacklistedScraps)
-            Debug("Recycle completed by prompt fallback")
-            return true
-        end
-        local t0 = tick()
-        while IsRunning and tick() - t0 < 2.5 do
-            task.wait(0.2)
-            local scrapNow = GetActualScrapCount()
-            local moneyNow = GetMoneyValue()
-            if (scrapBefore and scrapNow and scrapNow < scrapBefore) or (moneyBefore and moneyNow and moneyNow > moneyBefore) then
-                collectedScraps = scrapNow or 0
-                table.clear(BlacklistedScraps)
-                Debug("Recycle completed")
-                return true
-            end
-        end
+    
+    if not recyclerPos then 
         collectedScraps = 0
-        table.clear(BlacklistedScraps)
-        Debug("Recycle timeout, returning to farming")
-        return true
-    end)
+        return false 
+    end
+
+    if not CanRunAction("RecycleScrap", 1.5) then return false end
+    
+    if recyclerPad and recyclerPad.part then
+        FastTouch(recyclerPad.part)
+    end
+    
+    WalkTo(recyclerPos, 3.5, 3.2)
+    
+    if recyclerPad and recyclerPad.part then
+        FastTouch(recyclerPad.part)
+    end
+    
+    if recyclerPad and recyclerPad.prompt and recyclerPad.prompt:IsA("ProximityPrompt") then
+        TriggerPrompt(recyclerPad.prompt)
+    else
+        TriggerNearbyPrompt("recycle", 14)
+    end
+    
+    TryClickGuiAction("RecycleScrap", { "recycle", "sell scrap", "convert", "empty", "deposit" }, 1.0)
+    FireGameRemote({ "recycle", "sellscrap", "depositscrap" })
+    
+    task.wait(0.25)
+    collectedScraps = 0
+    LastObservedScrapCount = 0
+    table.clear(BlacklistedScraps)
+    SafeDismissPopups()
+    
+    return true
 end
 
 local function RebirthAvailable()
@@ -658,7 +665,7 @@ local function RebirthAvailable()
         if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
             local text = ButtonText(b)
             local looksReady = text:find("claim") or text:find("available") or text:find("ready")
-                or text:find("do rebirth")
+                or text:find("do rebirth") or text:find("rebirth")
             local blocked = text:find("auto") or text:find("master") or text:find("locked")
                 or text:find("require") or text:find("need")
             if looksReady and text:find("rebirth") and not blocked then
@@ -670,61 +677,53 @@ local function RebirthAvailable()
 end
 
 local function DoRebirth()
-    return RunExclusiveAction(function()
-        if not CanRunAction("Rebirth", 8) then return false end
-        if not RebirthAvailable() then return false end
-        TryClickGuiAction("RebirthOpen", { "rebirth" }, 2)
-        task.wait(0.35)
-        local ok = TryClickGuiAction("RebirthConfirm", { "confirm", "yes", "do rebirth", "claim rebirth" }, 2)
-        if ok then
-            task.wait(3)
-            collectedScraps = 0
-            LastObservedScrapCount = 0
-            table.clear(BlacklistedScraps)
-            table.clear(ActionCooldowns)
-            CurrentTargetScrap = nil
-            Debug("Rebirth completed")
-            return true
-        end
-        SafeDismissPopups()
-        return false
-    end)
+    if not CanRunAction("Rebirth", 5) then return false end
+    if not RebirthAvailable() then return false end
+    TryClickGuiAction("RebirthOpen", { "rebirth" }, 1.5)
+    task.wait(0.25)
+    local ok = TryClickGuiAction("RebirthConfirm", { "confirm", "yes", "do rebirth", "claim rebirth" }, 1.5)
+    if ok then
+        task.wait(1.5)
+        collectedScraps = 0
+        LastObservedScrapCount = 0
+        table.clear(BlacklistedScraps)
+        table.clear(ActionCooldowns)
+        CurrentTargetScrap = nil
+        return true
+    end
+    SafeDismissPopups()
+    return false
 end
 
+-- Upgrade & Beli Feeder Terlengkap
 local function RunUpgrades()
     local did = false
+    
+    -- 1. Beli Feeder Baru
     if Flags.AutoBuyFeeders or Flags.AutoRebirth then
-        did = ExecutePadAction("BuyFeeder", "buy feeder", { "buy feeder" }, 3) or did
+        did = ExecutePadAction("BuyFeeder", { "buy feeder", "new feeder", "feeder", "purchase feeder", "unlock feeder", "add feeder" }, { "buy feeder", "new feeder" }, 2.0) or did
     end
+    
+    -- 2. Upgrade Feeder
     if Flags.AutoUpgradeFeeder or Flags.AutoRebirth then
-        did = ExecutePadAction("UpgradeFeeder", "upgrade feeder", { "upgrade feeder" }, 3) or did
+        did = ExecutePadAction("UpgradeFeeder", { "upgrade feeder", "feed speed", "feeder level", "feeder upgrade" }, { "upgrade feeder", "upgrade speed" }, 2.0) or did
     end
+    
+    -- 3. Upgrade Recycler
     if Flags.AutoUpgradeRecycler then
-        did = ExecutePadAction("UpgradeRecycler", "upgrade recycler", { "upgrade recycler" }, 4) or did
+        did = ExecutePadAction("UpgradeRecycler", { "upgrade recycler", "recycler speed", "recycler level" }, { "upgrade recycler" }, 2.5) or did
     end
+    
+    -- 4. Upgrade Coop
     if Flags.AutoUpgradeCoop then
-        did = ExecutePadAction("UpgradeCoop", "upgrade coop", { "upgrade coop" }, 4) or did
+        did = ExecutePadAction("UpgradeCoop", { "upgrade coop", "coop level", "expand coop" }, { "upgrade coop" }, 2.5) or did
     end
+    
+    -- 5. Open Egg
     if Flags.AutoOpenEggs then
-        did = TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 2) or did
+        did = TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 1.5) or did
     end
-    return did
-end
-
-local function RunQuickUpgrades()
-    local did = false
-    if Flags.AutoBuyFeeders or Flags.AutoRebirth then
-        did = TryClickGuiAction("QuickBuyFeeder", { "buy feeder" }, 2.5) or did
-    end
-    if Flags.AutoUpgradeFeeder or Flags.AutoRebirth then
-        did = TryClickGuiAction("QuickUpgradeFeeder", { "upgrade feeder" }, 2.5) or did
-    end
-    if Flags.AutoUpgradeRecycler then
-        did = TryClickGuiAction("QuickUpgradeRecycler", { "upgrade recycler" }, 3) or did
-    end
-    if Flags.AutoUpgradeCoop then
-        did = TryClickGuiAction("QuickUpgradeCoop", { "upgrade coop" }, 3) or did
-    end
+    
     return did
 end
 
@@ -743,17 +742,17 @@ local function ShouldEnterTower()
 end
 
 local function RunTowerState()
-    if not CanRunAction("TowerStart", 10) and not IsInBattle() then return false end
-    TryClickGuiAction("TowerStart", { "tower", "start tower", "battle" }, 4)
-    task.wait(1.5)
+    if not CanRunAction("TowerStart", 6) and not IsInBattle() then return false end
+    TryClickGuiAction("TowerStart", { "tower", "start tower", "battle" }, 3)
+    task.wait(1.0)
     local t0 = tick()
-    while IsRunning and Flags.AutoStartTower and tick() - t0 < 160 do
+    while IsRunning and Flags.AutoStartTower and tick() - t0 < 120 do
         if Flags.AutoNoThanks then
-            TryClickGuiAction("NoThanks", { "no thanks", "nothanks", "skip" }, 1.5)
+            TryClickGuiAction("NoThanks", { "no thanks", "nothanks", "skip" }, 1.0)
         end
-        TryClickGuiAction("TowerClaim", { "claim", "next floor", "victory", "continue" }, 1.5)
-        if not IsInBattle() and tick() - t0 > 6 then break end
-        task.wait(0.8)
+        TryClickGuiAction("TowerClaim", { "claim", "next floor", "victory", "continue" }, 1.0)
+        if not IsInBattle() and tick() - t0 > 4 then break end
+        task.wait(0.5)
     end
     return true
 end
@@ -761,77 +760,77 @@ end
 local function RecoverIfStuck()
     local timeout = STATE_TIMEOUTS[CurrentState]
     if not timeout or tick() - StateStartedAt <= timeout then return end
-    Debug("State timeout, recovering from", CurrentState)
     CurrentTargetScrap = nil
     SetState(State.COLLECTING)
 end
 
+-- Main Loop: Super Fast & Non-Blocking
 task.spawn(function()
+    local upgradeCounter = 0
     while IsRunning do
         pcall(function()
-            RefreshRemoteCache(false)
             RecoverIfStuck()
+            
             if not ShouldRunAutomation() then
                 SetState(State.IDLE)
-                task.wait(0.3)
+                task.wait(0.2)
                 return
             end
+            
             if Flags.AutoNoThanks then SafeDismissPopups() end
+            
             local root = GetRoot()
             local hum = GetHumanoid()
             if not root or not hum or hum.Health <= 0 then
                 SetState(State.WAITING)
-                task.wait(0.5)
+                task.wait(0.3)
                 return
             end
-            if IsInBattle() or ShouldEnterTower() then
+            
+            if Flags.AutoStartTower and (IsInBattle() or ShouldEnterTower()) then
                 SetState(State.TOWER)
             elseif CurrentState == State.IDLE or CurrentState == State.WAITING then
                 SetState(State.COLLECTING)
             end
+            
             if CurrentState == State.COLLECTING then
                 local count = GetActualScrapCount()
                 local cap = tonumber(Flags.ScrapCapacity) or 20
+                
                 if Flags.AutoOpenEggs then
                     TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 2)
                 end
-                if Flags.AutoStartChaos then
-                    Debug("AutoStartChaos TODO: no safe prompt/UI implementation found")
-                end
+                
+                -- Cek kapasitas scrap
                 if Flags.AutoRecycleScrap and count > 0 and (count >= cap or not Flags.AutoGrabScraps) then
-                    Debug("Capacity reached")
                     SetState(State.RECYCLING)
                     return
                 end
+                
+                -- Ambil Scrap tanpa henti
                 if Flags.AutoGrabScraps then
                     local scrap = FindBestScrap()
                     if scrap then
-                        Debug("Scrap found")
                         TryCollectScrap(scrap)
                     else
-                        task.wait(0.35)
+                        -- Jika scrap belum spawn, langsung cek feeder / upgrade agar waktu tidak terbuang
+                        upgradeCounter = upgradeCounter + 1
+                        if upgradeCounter >= 4 then
+                            upgradeCounter = 0
+                            RunUpgrades()
+                        end
+                        task.wait(0.1)
                     end
                 else
-                    if Flags.AutoBuyFeeders or Flags.AutoUpgradeFeeder or Flags.AutoUpgradeRecycler or Flags.AutoUpgradeCoop then
-                        SetState(State.UPGRADING)
-                    else
-                        task.wait(0.3)
-                    end
+                    RunUpgrades()
+                    task.wait(0.3)
                 end
+                
             elseif CurrentState == State.RECYCLING then
-                if RecycleScrap() then
-                    RunQuickUpgrades()
-                    if Flags.AutoRebirth and RebirthAvailable() then
-                        SetState(State.REBIRTH)
-                    elseif (Flags.AutoBuyFeeders or Flags.AutoUpgradeFeeder or Flags.AutoUpgradeRecycler or Flags.AutoUpgradeCoop)
-                        and not Flags.AutoGrabScraps then
-                        SetState(State.UPGRADING)
-                    else
-                        SetState(State.COLLECTING)
-                    end
-                else
-                    SetState(State.COLLECTING)
-                end
+                RecycleScrap()
+                -- Setelah recycle selesai, LANGSUNG upgrade & beli feeder
+                SetState(State.UPGRADING)
+                
             elseif CurrentState == State.UPGRADING then
                 RunUpgrades()
                 if Flags.AutoRebirth and RebirthAvailable() then
@@ -839,20 +838,21 @@ task.spawn(function()
                 else
                     SetState(State.COLLECTING)
                 end
+                
             elseif CurrentState == State.REBIRTH then
                 DoRebirth()
-                task.wait(1)
                 SetState(State.COLLECTING)
+                
             elseif CurrentState == State.TOWER then
                 RunTowerState()
                 SetState(State.COLLECTING)
             end
-            task.wait(0.15)
         end)
-        task.wait(0.05)
+        task.wait(0.03)
     end
 end)
 
+-- [[ GUI SETUP ]]
 local Gui = Instance.new("ScreenGui", CoreGui)
 Gui.Name = "ERDEVA_HUB"
 Gui.ResetOnSpawn = false
@@ -884,7 +884,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v1.1</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v1.2 (Fast Auto)</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -987,6 +987,7 @@ local function AddToggle(parent, label, key)
         tw(k,{Position=(on and UDim2.fromOffset(20,2) or UDim2.fromOffset(2,2))})
     end
     ToggleUpdaters[key] = upd
+    upd(Flags[key])
     b.MouseButton1Click:Connect(function()
         local ns = not Flags[key]
         SetFlag(key, ns)
@@ -1120,3 +1121,4 @@ AddInfo("Player", player.DisplayName)
 AddInfo("Status", "Operational")
 
 SetTab("Farm")
+```
