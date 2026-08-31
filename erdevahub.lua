@@ -69,7 +69,7 @@ RunService.Stepped:Connect(function()
     local char = player.Character
     if char then
         local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum then hum.WalkSpeed = 20 end
+        if hum then hum.WalkSpeed = 17 end
         for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") then part.CanCollide = false end
         end
