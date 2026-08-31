@@ -31,7 +31,7 @@ local function Notify(title, desc, duration)
     end)
 end
 
-Notify("ERDEVA HUB", "v2.5 Loaded! Ready to farm.", 4.5)
+Notify("ERDEVA", "ERDEVA HUB v2.5 Loaded! Ready to farm.", 4.5)
 
 local Flags = {
     AutoOpenEggs        = false,
@@ -44,7 +44,7 @@ local Flags = {
     AutoUpgradeFeeder   = false,
     AutoBuyFeeders      = false,
     AutoStartTower      = false,
-    AutoNoThanks        = true,
+    AutoNoThanks        = false,
     AutoStartChaos      = false,
 }
 
@@ -318,8 +318,10 @@ local function FindBasePad(keywords)
         elseif obj:IsA("BasePart") then
             local name = obj.Name:lower()
             local pName = obj.Parent and obj.Parent.Name:lower() or ""
+            local ppName = (obj.Parent and obj.Parent.Parent and obj.Parent.Parent.Name:lower()) or ""
             for _, kw in ipairs(keywords) do
-                if name:find(kw:lower()) or pName:find(kw:lower()) then
+                local kl = kw:lower()
+                if name:find(kl) or pName:find(kl) or ppName:find(kl) then
                     matched=true targetPart=obj
                     prompt = obj:FindFirstChildOfClass("ProximityPrompt") or obj:FindFirstChildOfClass("ClickDetector")
                     break
@@ -340,15 +342,14 @@ local function ExecuteBasePad(actionName, keywords, guiPatterns, cooldown)
     local pad = FindBasePad(keywords)
     if pad and pad.part then
         FastTouch(pad.part)
-        if WalkTo(pad.part.Position, 3.5, 3.5) then
-            FastTouch(pad.part)
-            if pad.prompt and pad.prompt:IsA("ProximityPrompt") then
-                TriggerPrompt(pad.prompt)
-            elseif pad.prompt and pad.prompt:IsA("ClickDetector") and fireclickdetector then
-                pcall(function() fireclickdetector(pad.prompt) end)
-            else
-                for _, kw in ipairs(keywords) do TriggerNearbyPrompt(kw, 12) end
-            end
+        WalkTo(pad.part.Position, 2.5, 3.5)
+        FastTouch(pad.part)
+        if pad.prompt and pad.prompt:IsA("ProximityPrompt") then
+            TriggerPrompt(pad.prompt)
+        elseif pad.prompt and pad.prompt:IsA("ClickDetector") and fireclickdetector then
+            pcall(function() fireclickdetector(pad.prompt) end)
+        else
+            for _, kw in ipairs(keywords) do TriggerNearbyPrompt(kw, 12) end
         end
     end
     if guiPatterns then TryClickGuiAction(actionName, guiPatterns, cooldown or 2.0) end
@@ -381,16 +382,16 @@ end
 
 local function DoUpgrades()
     if Flags.AutoBuyFeeders or Flags.AutoRebirth then
-        ExecuteBasePad("BuyFeeder", {"buy feeder","new feeder","feeder","purchase feeder","unlock feeder","add feeder"}, {"buy feeder","new feeder"}, 2.5)
+        ExecuteBasePad("BuyFeeder", {"buy feeder","new feeder","feeder","purchase feeder","unlock feeder","add feeder","buy"}, {"buy feeder","new feeder","feeder"}, 1.5)
     end
     if Flags.AutoUpgradeFeeder or Flags.AutoRebirth then
-        ExecuteBasePad("UpgradeFeeder", {"upgrade feeder","feed speed","feeder level","feeder upgrade"}, {"upgrade feeder","upgrade speed"}, 2.5)
+        ExecuteBasePad("UpgradeFeeder", {"upgrade feeder","feed speed","feeder level","feeder upgrade"}, {"upgrade feeder","upgrade speed"}, 1.5)
     end
     if Flags.AutoUpgradeRecycler or Flags.AutoRebirth then
-        ExecuteBasePad("UpgradeRecycler", {"upgrade recycler","recycler speed","recycler level","upgrade speed","recycler upgrade"}, {"upgrade recycler","upgrade speed"}, 2.0)
+        ExecuteBasePad("UpgradeRecycler", {"upgrade recycler","recycler speed","recycler level","upgrade speed","recycler upgrade"}, {"upgrade recycler","upgrade speed"}, 1.5)
     end
     if Flags.AutoUpgradeCoop then
-        ExecuteBasePad("UpgradeCoop", {"upgrade coop","coop level","expand coop"}, {"upgrade coop"}, 2.5)
+        ExecuteBasePad("UpgradeCoop", {"upgrade coop","coop level","expand coop"}, {"upgrade coop"}, 2.0)
     end
     if Flags.AutoOpenEggs then
         TryClickGuiAction("OpenEggs", {"hatch","open egg","open","egg"}, 2.0)
@@ -429,7 +430,7 @@ task.spawn(function()
                     end
                 end
             end
-            if (Flags.AutoStartTower or Flags.AutoRebirth) and not ChickenInTower and (tick() - LastTowerFinishedAt >= 5.0) then
+            if (Flags.AutoStartTower or Flags.AutoRebirth) and not ChickenInTower and (tick() - LastTowerFinishedAt >= 120.0) then
                 for _, b in ipairs(pg:GetDescendants()) do
                     if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
                         local text = ButtonText(b)
@@ -577,7 +578,7 @@ MiniImage.Size = UDim2.fromOffset(36, 36)
 MiniImage.AnchorPoint = Vector2.new(0.5, 0.5)
 MiniImage.Position = UDim2.new(0.5, 0, 0.42, 0)
 MiniImage.BackgroundTransparency = 1
-MiniImage.Image = "rbxassetid://7072718362"
+MiniImage.Image = "rbxassetid://10734898102"
 MiniImage.ImageColor3 = Color3.fromRGB(240, 240, 240)
 
 local MiniLabel = Instance.new("TextLabel", MiniIcon)
@@ -817,7 +818,7 @@ AddButton(PlotPage, "[LOCK] Set Recycler Pad", function(btn)
         LOCKED_RECYCLER_POS = root.Position
         btn.Text = "✓ Recycler Pad Locked!"
         Notify("ERDEVA HUB", "Recycler Pad locked!", 3.5)
-        task.delay(2.5, function() btn.Text = "[LOCK] Set Recycler Pad" end)
+        task.delay(2.5, function() btn.Text = "Set Recycler Pad" end)
     end
 end)
 AddToggle(PlotPage, "Auto Buy Feeders",    "AutoBuyFeeders")
@@ -844,7 +845,7 @@ local function AddInfo(k, v, isLive)
     if isLive then LiveCarriedLabel = r end
 end
 
-AddInfo("Hub",            "ERDEVA HUB")
+AddInfo("Hub",            "ERDEVA HUB v2.5")
 AddInfo("Game",           "Grow a Chicken Fight")
 AddInfo("Plates Grabbed", "0 / 20", true)
 AddInfo("Status",         "Operational")
