@@ -1,10 +1,9 @@
--- [[ ERDEVA HUB v1.2 - OPTIMIZED & NO-STUCK ]]
+-- [[ ERDEVA HUB v1.3 - USER CONTROLLED & ACCURATE CAPACITY ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 
@@ -30,19 +29,20 @@ local function tw(o, p, t)
     TweenService:Create(o, TweenInfo.new(t or 0.15), p):Play()
 end
 
+-- SEMUA DEFAULT MATI (FALSE) AGAR USER YANG MEMILIH
 local Flags = {
     AutoOpenEggs        = false,
-    AutoGrabScraps      = true,
-    AutoRecycleScrap    = true,
+    AutoGrabScraps      = false,
+    AutoRecycleScrap    = false,
     AutoUpgradeRecycler = false,
     ScrapCapacity       = 20,
     AutoRebirth         = false,
     AutoUpgradeCoop     = false,
-    AutoUpgradeFeeder   = true,
-    AutoBuyFeeders      = true,
+    AutoUpgradeFeeder   = false,
+    AutoBuyFeeders      = false,
     AutoStartTower      = false,
     TowerMinLevel       = 50,
-    AutoNoThanks        = true,
+    AutoNoThanks        = false,
     AutoStartChaos      = false,
 }
 
@@ -81,7 +81,6 @@ local ActionBusy = false
 local ActionCooldowns = {}
 local GuiCooldowns = {}
 local collectedScraps = 0
-local LastObservedScrapCount = nil
 local BlacklistedScraps = {}
 local CurrentTargetScrap = nil
 local LastPopupDismiss = 0
@@ -112,15 +111,6 @@ local function CanRunAction(action, cooldown)
     end
     ActionCooldowns[action] = now
     return true
-end
-
-local function RunExclusiveAction(callback)
-    if ActionBusy then return false end
-    ActionBusy = true
-    local ok, result = pcall(callback)
-    ActionBusy = false
-    if not ok then Debug("Action error:", result) end
-    return ok and result
 end
 
 local function ApplyNoCollision(char)
@@ -217,44 +207,11 @@ local function WalkTo(targetPos, timeout, stopDist)
 end
 
 local RECYCLER_POS = nil
-local function GetRecyclerPos() return RECYCLER_POS end
-
 local function LockRecycler()
     local root = GetRoot()
     if root then
         RECYCLER_POS = root.Position
-        Debug("Recycler locked at", RECYCLER_POS)
         return true
-    end
-    return false
-end
-
-local function RefreshRemoteCache(force)
-    if not force and tick() - LastRemoteScan < 15 then return end
-    LastRemoteScan = tick()
-    table.clear(RemoteCache)
-    for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
-        if remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction") then
-            RemoteCache[remote.Name:lower()] = remote
-        end
-    end
-end
-RefreshRemoteCache(true)
-
-local function FireGameRemote(patterns)
-    for _, pat in ipairs(patterns) do
-        for name, remote in pairs(RemoteCache) do
-            if name:find(pat) then
-                pcall(function()
-                    if remote:IsA("RemoteEvent") then
-                        remote:FireServer()
-                    elseif remote:IsA("RemoteFunction") then
-                        remote:InvokeServer()
-                    end
-                end)
-                return true
-            end
-        end
     end
     return false
 end
@@ -332,7 +289,6 @@ local function TryClickGuiAction(actionName, patterns, cooldown)
                     local key = actionName .. ":" .. b:GetFullName()
                     if not GuiCooldowns[key] or tick() - GuiCooldowns[key] > (cooldown or 1.0) then
                         GuiCooldowns[key] = tick()
-                        Debug("GUI Click:", actionName, text)
                         return ClickGuiButton(b)
                     end
                 end
@@ -342,36 +298,33 @@ local function TryClickGuiAction(actionName, patterns, cooldown)
     return false
 end
 
-local function ReadNumberFromText(text)
-    if not text then return nil end
-    text = tostring(text):gsub(",", "")
-    local n = text:match("(%d+)")
-    return n and tonumber(n) or nil
-end
-
+-- Deteksi Akurat Scrap Count (Tidak salah baca ScrapLevel / Multiplier)
 local function GetActualScrapCount()
     local containers = { player:FindFirstChild("leaderstats"), player:FindFirstChild("Stats"), player:FindFirstChild("Data") }
     for _, container in ipairs(containers) do
         if container then
             for _, obj in ipairs(container:GetDescendants()) do
-                local n = obj.Name:lower()
-                if n:find("scrap") and (obj:IsA("IntValue") or obj:IsA("NumberValue")) then
-                    LastObservedScrapCount = obj.Value
+                local n = obj.Name:lower():gsub("%s+", "")
+                if (n == "scrap" or n == "scraps" or n == "currentscrap" or n == "scrapcount") and (obj:IsA("IntValue") or obj:IsA("NumberValue")) then
                     return obj.Value, true
                 end
             end
         end
     end
+    
     local pg = player:FindFirstChild("PlayerGui")
     if pg then
         for _, lbl in ipairs(pg:GetDescendants()) do
             if lbl:IsA("TextLabel") and IsVisibleGui(lbl) then
                 local text = lbl.Text:lower()
-                if text:find("scrap") then
-                    local num = ReadNumberFromText(text)
-                    if num ~= nil then
-                        LastObservedScrapCount = num
-                        return num, true
+                if text:find("scrap") and not (text:find("level") or text:find("upgrade") or text:find("multiplier") or text:find("tier") or text:find("cost")) then
+                    local cur, maxVal = text:match("(%d+)%s*/%s*(%d+)")
+                    if cur then
+                        return tonumber(cur), true
+                    end
+                    local single = text:match("scrap%s*:%s*(%d+)") or text:match("(%d+)%s*scrap")
+                    if single then
+                        return tonumber(single), true
                     end
                 end
             end
@@ -380,25 +333,6 @@ local function GetActualScrapCount()
     return collectedScraps, false
 end
 
-local function GetMoneyValue()
-    local words = { "money", "cash", "coin", "coins", "gold" }
-    local containers = { player:FindFirstChild("leaderstats"), player:FindFirstChild("Stats"), player:FindFirstChild("Data") }
-    for _, container in ipairs(containers) do
-        if container then
-            for _, obj in ipairs(container:GetDescendants()) do
-                local n = obj.Name:lower()
-                if obj:IsA("IntValue") or obj:IsA("NumberValue") then
-                    for _, w in ipairs(words) do
-                        if n:find(w) then return obj.Value end
-                    end
-                end
-            end
-        end
-    end
-    return nil
-end
-
--- Cari Pad / Tombol dengan keyword fleksibel
 local function FindPadByKeywords(keywords)
     local root = GetRoot()
     if not root then return nil end
@@ -566,7 +500,6 @@ local function FindBestScrap()
     return best
 end
 
--- Ambil Scrap Super Cepat Tanpa Delay / Freeze
 local function TryCollectScrap(scrap)
     if not scrap or not scrap.Parent or not IsGroundScrap(scrap) then return false end
     
@@ -575,7 +508,6 @@ local function TryCollectScrap(scrap)
     if not root then return false end
     
     FastTouch(scrap)
-    
     local reached = WalkTo(scrap.Position, 2.0, 3.0)
     FastTouch(scrap)
     TriggerNearbyPrompt("scrap", 10)
@@ -593,9 +525,8 @@ local function TryCollectScrap(scrap)
     end
 end
 
--- Recycle Scrap Cepat, Tidak Stuck
 local function RecycleScrap()
-    local recyclerPos = GetRecyclerPos()
+    local recyclerPos = RECYCLER_POS
     local recyclerPad = nil
     if not recyclerPos then
         recyclerPad = FindPadByKeywords({ "recycle", "recycler", "sell scrap", "convert" })
@@ -626,11 +557,9 @@ local function RecycleScrap()
     end
     
     TryClickGuiAction("RecycleScrap", { "recycle", "sell scrap", "convert", "empty", "deposit" }, 1.0)
-    FireGameRemote({ "recycle", "sellscrap", "depositscrap" })
     
     task.wait(0.25)
     collectedScraps = 0
-    LastObservedScrapCount = 0
     table.clear(BlacklistedScraps)
     SafeDismissPopups()
     
@@ -664,7 +593,6 @@ local function DoRebirth()
     if ok then
         task.wait(1.5)
         collectedScraps = 0
-        LastObservedScrapCount = 0
         table.clear(BlacklistedScraps)
         table.clear(ActionCooldowns)
         CurrentTargetScrap = nil
@@ -674,35 +602,23 @@ local function DoRebirth()
     return false
 end
 
--- Upgrade & Beli Feeder Terlengkap
 local function RunUpgrades()
     local did = false
-    
-    -- 1. Beli Feeder Baru
     if Flags.AutoBuyFeeders or Flags.AutoRebirth then
         did = ExecutePadAction("BuyFeeder", { "buy feeder", "new feeder", "feeder", "purchase feeder", "unlock feeder", "add feeder" }, { "buy feeder", "new feeder" }, 2.0) or did
     end
-    
-    -- 2. Upgrade Feeder
     if Flags.AutoUpgradeFeeder or Flags.AutoRebirth then
         did = ExecutePadAction("UpgradeFeeder", { "upgrade feeder", "feed speed", "feeder level", "feeder upgrade" }, { "upgrade feeder", "upgrade speed" }, 2.0) or did
     end
-    
-    -- 3. Upgrade Recycler
     if Flags.AutoUpgradeRecycler then
         did = ExecutePadAction("UpgradeRecycler", { "upgrade recycler", "recycler speed", "recycler level" }, { "upgrade recycler" }, 2.5) or did
     end
-    
-    -- 4. Upgrade Coop
     if Flags.AutoUpgradeCoop then
         did = ExecutePadAction("UpgradeCoop", { "upgrade coop", "coop level", "expand coop" }, { "upgrade coop" }, 2.5) or did
     end
-    
-    -- 5. Open Egg
     if Flags.AutoOpenEggs then
         did = TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 1.5) or did
     end
-    
     return did
 end
 
@@ -743,7 +659,7 @@ local function RecoverIfStuck()
     SetState(State.COLLECTING)
 end
 
--- Main Loop: Super Fast & Non-Blocking
+-- Main Loop
 task.spawn(function()
     local upgradeCounter = 0
     while IsRunning do
@@ -752,7 +668,7 @@ task.spawn(function()
             
             if not ShouldRunAutomation() then
                 SetState(State.IDLE)
-                task.wait(0.2)
+                task.wait(0.25)
                 return
             end
             
@@ -773,28 +689,27 @@ task.spawn(function()
             end
             
             if CurrentState == State.COLLECTING then
-                local count = GetActualScrapCount()
+                local realCount, found = GetActualScrapCount()
+                local count = found and realCount or collectedScraps
                 local cap = tonumber(Flags.ScrapCapacity) or 20
                 
                 if Flags.AutoOpenEggs then
                     TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 2)
                 end
                 
-                -- Cek kapasitas scrap
-                if Flags.AutoRecycleScrap and count > 0 and (count >= cap or not Flags.AutoGrabScraps) then
+                -- HANYA RECYCLE JIKA JUMLAH SCRAP SUDAH MENCAPAI CAPACITY
+                if Flags.AutoRecycleScrap and count >= cap then
                     SetState(State.RECYCLING)
                     return
                 end
                 
-                -- Ambil Scrap tanpa henti
                 if Flags.AutoGrabScraps then
                     local scrap = FindBestScrap()
                     if scrap then
                         TryCollectScrap(scrap)
                     else
-                        -- Jika scrap belum spawn, langsung cek feeder / upgrade agar waktu tidak terbuang
                         upgradeCounter = upgradeCounter + 1
-                        if upgradeCounter >= 4 then
+                        if upgradeCounter >= 5 then
                             upgradeCounter = 0
                             RunUpgrades()
                         end
@@ -807,7 +722,6 @@ task.spawn(function()
                 
             elseif CurrentState == State.RECYCLING then
                 RecycleScrap()
-                -- Setelah recycle selesai, LANGSUNG upgrade & beli feeder
                 SetState(State.UPGRADING)
                 
             elseif CurrentState == State.UPGRADING then
@@ -827,7 +741,7 @@ task.spawn(function()
                 SetState(State.COLLECTING)
             end
         end)
-        task.wait(0.03)
+        task.wait(0.04)
     end
 end)
 
@@ -863,7 +777,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v1.2 (Fast Auto)</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v1.3</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
