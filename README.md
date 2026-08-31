@@ -2,8 +2,6 @@
 
 > Grow a Chicken Fighter Automation Hub
 
-## Thumbnail
-
 ![ERDEVA HUB v2.5 Thumbnail](thumbnail.png)
 
 ## Features
