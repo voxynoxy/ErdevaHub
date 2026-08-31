@@ -1,3 +1,4 @@
+-- [[ ERDEVA HUB v1.8 - DIRECT ARENA NAVIGATION & SCRAP VACUUM ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -28,7 +29,6 @@ local function tw(o, p, t)
     TweenService:Create(o, TweenInfo.new(t or 0.15), p):Play()
 end
 
--- NOTIFIKASI BAWAAN ASLI ROBLOX DI KANAN BAWAH
 local function Notify(title, desc, duration)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
@@ -88,8 +88,8 @@ local GuiCooldowns = {}
 local BlacklistedScraps = {}
 
 local STATE_TIMEOUTS = {
-    [State.COLLECTING] = 20,
-    [State.RECYCLING]  = 5,
+    [State.COLLECTING] = 25,
+    [State.RECYCLING]  = 6,
     [State.UPGRADING]  = 4,
     [State.TOWER]      = 120,
     [State.REBIRTH]    = 10,
@@ -186,7 +186,7 @@ local function WalkTo(targetPos, timeout, stopDist)
     local root = GetRoot()
     if not hum or not root then return false end
     stopDist = stopDist or 2.5
-    timeout = timeout or 3.0
+    timeout = timeout or 3.5
     local t0 = tick()
     local char = GetChar()
 
@@ -207,7 +207,10 @@ local function WalkTo(targetPos, timeout, stopDist)
     return root and FlatDist(root.Position, targetPos) <= (stopDist + 2.5)
 end
 
+-- POSISI BASE & ARENA
 local RECYCLER_POS = nil
+local ARENA_POS = nil
+
 local function LockRecycler()
     local root = GetRoot()
     if root then
@@ -215,6 +218,47 @@ local function LockRecycler()
         return true
     end
     return false
+end
+
+local function LockArena()
+    local root = GetRoot()
+    if root then
+        ARENA_POS = root.Position
+        return true
+    end
+    return false
+end
+
+-- Cari Posisi Arena Otomatis jika belum di-lock
+local function GetArenaPosition()
+    if ARENA_POS then return ARENA_POS end
+    
+    local root = GetRoot()
+    if not root then return nil end
+    
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        local n = obj.Name:lower()
+        if (n:find("arena") or n:find("pen") or n:find("field") or n:find("chickenarena")) and obj:IsA("BasePart") then
+            local d = FlatDist(root.Position, obj.Position)
+            if d > 20 and d < 400 then
+                ARENA_POS = obj.Position
+                return ARENA_POS
+            end
+        end
+    end
+    
+    -- Fallback: Jika tidak ketemu nama arena, cari pusat lempengan scrap terjauh
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and (obj.Name:lower():find("scrap") or obj.Name:lower():find("plate")) then
+            local d = FlatDist(root.Position, obj.Position)
+            if d > 30 and d < 400 then
+                ARENA_POS = obj.Position
+                return ARENA_POS
+            end
+        end
+    end
+    
+    return nil
 end
 
 local function ClickGuiButton(btn)
@@ -314,7 +358,7 @@ local function TryClickGuiAction(actionName, patterns, cooldown)
     return false
 end
 
--- DETEKSI SEMUA LEMPENGAN SCRAP DI ARENA
+-- DETEKSI PLAT BESI SCRAP ASLI DI ARENA
 local function IsGroundScrap(obj)
     if not obj:IsA("BasePart") or not obj.Parent then return false end
     
@@ -326,25 +370,28 @@ local function IsGroundScrap(obj)
     local n = obj.Name:lower()
     local pn = obj.Parent.Name:lower()
     
-    -- Kecualikan struktur base / dekorasi bangunan
+    -- Jangan deteksi bagian base/plot
     if n:find("fence") or n:find("wall") or n:find("floor") or n:find("baseplate") or n:find("terrain") or n:find("spawn") then
         return false
     end
     if n:find("recycler") or n:find("feeder") or n:find("coop") or n:find("incubator") or n:find("shop") or n:find("button") then
         return false
     end
-    if pn:find("recycler") or pn:find("feeder") or pn:find("coop") or pn:find("incubator") or pn:find("shop") then
+    if pn:find("recycler") or pn:find("feeder") or pn:find("coop") or pn:find("incubator") or pn:find("shop") or pn:find("plot") then
         return false
     end
     
-    -- Deteksi lempengan scrap / drop / plate
-    if n:find("scrap") or n:find("plate") or n:find("trash") or n:find("drop") or n:find("metal") or pn:find("scrap") or pn:find("plate") or pn:find("drop") then
+    -- Deteksi nama lempengan
+    if n:find("scrap") or n:find("plate") or n:find("drop") or n:find("trash") or n:find("metal") or pn:find("scrap") or pn:find("plate") or pn:find("drop") then
         return true
     end
     
-    -- Deteksi bentuk lempengan plat tipis (lebar 0.8 - 6 studs, tebal tipis)
-    if obj.Size.Y <= 1.2 and obj.Size.X >= 0.7 and obj.Size.Z >= 0.7 and obj.Size.X <= 6 and obj.Size.Z <= 6 then
-        return true
+    -- Deteksi bentuk plat jika berada di area arena (> 25 studs dari base)
+    local root = GetRoot()
+    if root and FlatDist(root.Position, obj.Position) > 20 then
+        if obj.Size.Y <= 1.2 and obj.Size.X >= 0.7 and obj.Size.Z >= 0.7 and obj.Size.X <= 6 and obj.Size.Z <= 6 then
+            return true
+        end
     end
     
     return false
@@ -359,7 +406,7 @@ local function CleanupScrapBlacklist()
     end
 end
 
--- Cari Scrap Terdekat (Jangkauan Luas hingga ke Arena)
+-- Cari Plat Besi di Arena
 local function FindBestScrap()
     CleanupScrapBlacklist()
     local root = GetRoot()
@@ -369,7 +416,7 @@ local function FindBestScrap()
     for _, obj in ipairs(workspace:GetDescendants()) do
         if IsGroundScrap(obj) and not BlacklistedScraps[obj] then
             local d = FlatDist(root.Position, obj.Position)
-            if d < 800 and d < bestDist then
+            if d < 600 and d < bestDist then
                 best = obj
                 bestDist = d
             end
@@ -378,7 +425,7 @@ local function FindBestScrap()
     return best
 end
 
--- Ambil Plat di Arena
+-- Ambil Plat
 local function TryCollectScrap(scrap)
     if not scrap or not scrap.Parent or not IsGroundScrap(scrap) then return false end
     
@@ -599,7 +646,7 @@ local function RecoverIfStuck()
     SetState(State.COLLECTING)
 end
 
--- Main Loop: Lari ke Arena -> Ambil Plat -> Pulang Recycle -> Balik Lagi
+-- Main Loop: Lari ke Arena -> Ambil Plat -> Pulang Recycle -> Balik Lagi ke Arena
 task.spawn(function()
     while IsRunning do
         pcall(function()
@@ -630,7 +677,7 @@ task.spawn(function()
                     TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 2)
                 end
                 
-                -- RECYCLE JIKA TARGET 20 TERCAPAI ATAU TANGAN PENUH
+                -- RECYCLE JIKA SUDAH DAPAT 20 ATAU TANGAN PENUH
                 if Flags.AutoRecycleScrap and (CurrentBatchScraps >= targetCap or (CurrentBatchScraps > 0 and ConsecutiveFails >= 4)) then
                     SetState(State.RECYCLING)
                     return
@@ -642,7 +689,13 @@ task.spawn(function()
                     if scrap then
                         TryCollectScrap(scrap)
                     else
-                        task.wait(0.15)
+                        -- Jika belum melihat scrap dari posisi sekarang, lari langsung ke dalam Arena!
+                        local arenaPos = GetArenaPosition()
+                        if arenaPos and FlatDist(root.Position, arenaPos) > 15 then
+                            WalkTo(arenaPos, 3.0, 5.0)
+                        else
+                            task.wait(0.2)
+                        end
                     end
                 else
                     RunUpgrades()
@@ -702,7 +755,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v1.7</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v1.8</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -885,30 +938,46 @@ AddToggle(PlotPage, "Auto Upgrade Coop",     "AutoUpgradeCoop")
 
 do
     local wrapper = Instance.new("Frame", PlotPage)
-    wrapper.Size = UDim2.new(1,0,0,56)
+    wrapper.Size = UDim2.new(1,0,0,88)
     wrapper.BackgroundColor3 = Color3.fromRGB(18,18,18)
     Instance.new("UICorner", wrapper).CornerRadius = UDim.new(0,6)
     local s = Instance.new("UIStroke", wrapper) s.Color=C.Red s.Thickness=1
-    local hint = Instance.new("TextLabel", wrapper)
-    hint.Size = UDim2.new(1,-8,0,18) hint.Position = UDim2.fromOffset(4,2)
-    hint.BackgroundTransparency = 1 hint.Text = "[!] Stand on your Recycler pad, then click:"
-    hint.TextColor3 = Color3.fromRGB(255,200,50) hint.TextSize = 10
-    hint.Font = Enum.Font.GothamBold hint.TextXAlignment = Enum.TextXAlignment.Left
+    
     local lockBtn = Instance.new("TextButton", wrapper)
-    lockBtn.Size = UDim2.new(1,-8,0,28) lockBtn.Position = UDim2.fromOffset(4,22)
+    lockBtn.Size = UDim2.new(1,-8,0,26) lockBtn.Position = UDim2.fromOffset(4,6)
     lockBtn.BackgroundColor3 = Color3.fromRGB(180,30,30)
-    lockBtn.Text = "[LOCK] Set My Recycler Position"
+    lockBtn.Text = "[LOCK] Set Recycler Pad Position"
     lockBtn.TextColor3 = Color3.fromRGB(255,255,255)
-    lockBtn.TextSize = 11 lockBtn.Font = Enum.Font.GothamBold
+    lockBtn.TextSize = 10 lockBtn.Font = Enum.Font.GothamBold
     Instance.new("UICorner", lockBtn).CornerRadius = UDim.new(0,5)
     lockBtn.MouseButton1Click:Connect(function()
         if LockRecycler() then
-            lockBtn.Text = "[OK] Recycler Position Locked"
+            lockBtn.Text = "[OK] Recycler Locked"
             lockBtn.BackgroundColor3 = Color3.fromRGB(20,120,20)
             task.delay(2, function()
                 if lockBtn and lockBtn.Parent then
-                    lockBtn.Text = "[LOCK] Set My Recycler Position"
+                    lockBtn.Text = "[LOCK] Set Recycler Pad Position"
                     lockBtn.BackgroundColor3 = Color3.fromRGB(180,30,30)
+                end
+            end)
+        end
+    end)
+
+    local arenaBtn = Instance.new("TextButton", wrapper)
+    arenaBtn.Size = UDim2.new(1,-8,0,26) arenaBtn.Position = UDim2.fromOffset(4,36)
+    arenaBtn.BackgroundColor3 = Color3.fromRGB(30,100,180)
+    arenaBtn.Text = "[LOCK] Set Arena Center Position (Stand in Arena)"
+    arenaBtn.TextColor3 = Color3.fromRGB(255,255,255)
+    arenaBtn.TextSize = 10 arenaBtn.Font = Enum.Font.GothamBold
+    Instance.new("UICorner", arenaBtn).CornerRadius = UDim.new(0,5)
+    arenaBtn.MouseButton1Click:Connect(function()
+        if LockArena() then
+            arenaBtn.Text = "[OK] Arena Position Locked"
+            arenaBtn.BackgroundColor3 = Color3.fromRGB(20,120,20)
+            task.delay(2, function()
+                if arenaBtn and arenaBtn.Parent then
+                    arenaBtn.Text = "[LOCK] Set Arena Center Position (Stand in Arena)"
+                    arenaBtn.BackgroundColor3 = Color3.fromRGB(30,100,180)
                 end
             end)
         end
@@ -937,7 +1006,7 @@ local function AddInfo(k, v, isLive)
 end
 
 AddInfo("Hub",            "ERDEVA HUB")
-AddInfo("Game",           "Chicken Farm")
+AddInfo("Game",           "Chicken oke Farm")
 AddInfo("Plates Grabbed", "0 / 20", true)
 AddInfo("Status",         "Operational")
 
