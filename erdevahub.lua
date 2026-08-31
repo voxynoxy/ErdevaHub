@@ -471,7 +471,6 @@ local function ExecuteUpgradeRecycler()
             local part = obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent or obj:FindFirstAncestorWhichIsA("BasePart")
             if part then
                 local text = (obj.ActionText .. " " .. obj.ObjectText .. " " .. obj.Name .. " " .. part.Name):lower()
-                -- HANYA TEKAN JIKA UPGRADE RECYCLER DAN BUKAN EVENT/COOP/BOARD
                 if (text:find("upgrade") or text:find("recycler")) and not (text:find("event") or text:find("follow") or text:find("coop") or text:find("feeder") or text:find("board") or text:find("update")) then
                     local d = (recPos - part.Position).Magnitude
                     if d <= 20 then
@@ -516,10 +515,6 @@ local function DoRecycleAtBase()
     if root and FlatDist(root.Position, targetPos) <= 4.0 then
         CurrentBatchScraps = 0
         table.clear(BlacklistedScraps)
-        
-        if Flags.AutoUpgradeRecycler or Flags.AutoRebirth then
-            ExecuteUpgradeRecycler()
-        end
     end
     
     DismissAllPopups()
@@ -532,9 +527,6 @@ local function DoUpgrades()
     end
     if Flags.AutoUpgradeFeeder or Flags.AutoRebirth then
         ExecuteBasePad("UpgradeFeeder", { "upgrade feeder", "feed speed", "feeder level", "feeder upgrade" }, { "upgrade feeder", "upgrade speed" }, 2.5)
-    end
-    if Flags.AutoUpgradeRecycler or Flags.AutoRebirth then
-        ExecuteUpgradeRecycler()
     end
     if Flags.AutoUpgradeCoop then
         ExecuteBasePad("UpgradeCoop", { "upgrade coop", "coop level", "expand coop" }, { "upgrade coop" }, 2.5)
@@ -575,22 +567,23 @@ task.spawn(function()
                             ClickGuiButton(target)
                             ChickenInTower = false
                             LastTowerFinishedAt = tick()
-                            Notify("ERDEVA HUB", "Tower selesai! Auto No Thanks diklik.", 2.0)
+                            Notify("ERDEVA HUB", "Tower selesai! Auto No Thanks diklik.", 1.5)
                             break
                         end
                     end
                 end
             end
             
-            if (Flags.AutoStartTower or Flags.AutoRebirth) and not ChickenInTower and (tick() - LastTowerFinishedAt >= 5.0) then
+            -- JEDA CEPAT 1.5 DETIK SETELAH NO THANKS
+            if (Flags.AutoStartTower or Flags.AutoRebirth) and not ChickenInTower and (tick() - LastTowerFinishedAt >= 1.5) then
                 for _, b in ipairs(pg:GetDescendants()) do
                     if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
                         local text = ButtonText(b)
                         if (text:find("tower") or b.Name:lower() == "tower") and not text:find("rebirth") and not text:find("not yet") and not text:find("no thanks") and not text:find("call") and not text:find("whistle") then
-                            if CanRunAction("SendChickenTower", 6.0) then
+                            if CanRunAction("SendChickenTower", 3.0) then
                                 ClickGuiButton(b)
                                 ChickenInTower = true
-                                Notify("ERDEVA HUB", "Ayam dikirim ke Tower! Menunggu K.O...", 2.5)
+                                Notify("ERDEVA HUB", "Ayam dikirim ke Tower! Menunggu K.O...", 2.0)
                                 break
                             end
                         end
@@ -598,7 +591,7 @@ task.spawn(function()
                 end
             end
         end)
-        task.wait(0.3)
+        task.wait(0.2)
     end
 end)
 
@@ -674,12 +667,19 @@ task.spawn(function()
                     end
                 end
             else
+                -- 1. SETOR SCRAP KE RECYCLER
                 SetState(State.RECYCLING)
                 DoRecycleAtBase()
                 
                 if CurrentBatchScraps == 0 then
+                    -- 2. BELI & UPGRADE FEEDER DULU
                     SetState(State.UPGRADING)
                     DoUpgrades()
+                    
+                    -- 3. UPGRADE RECYCLER SAAT UANG SETORAN SUDAH MASUK (SEBELUM BALIK KE ARENA)
+                    if Flags.AutoUpgradeRecycler or Flags.AutoRebirth then
+                        ExecuteUpgradeRecycler()
+                    end
                     
                     if Flags.AutoRebirth then
                         SetState(State.REBIRTH)
@@ -687,6 +687,7 @@ task.spawn(function()
                     end
                 end
                 
+                -- 4. KEMBALI KE ARENA
                 SetState(State.COLLECTING)
             end
         end)
