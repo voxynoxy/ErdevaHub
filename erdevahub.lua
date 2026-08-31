@@ -1,4 +1,3 @@
--- [[ ERDEVA HUB v2.5 ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -73,7 +72,6 @@ local function GetHumanoid()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
--- FULL NOCLIP REAL-TIME SETIAP FRAME (TEMBUS SEMUA PAGAR & OBJEK)
 RunService.Stepped:Connect(function()
     if not IsRunning then return end
     local char = player.Character
@@ -229,7 +227,6 @@ local function IsVisibleGui(obj)
     return true
 end
 
--- TUTUP POPUP NOT ENOUGH CASH
 local function DismissAllPopups()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
@@ -294,7 +291,6 @@ local function TryClickGuiAction(actionName, patterns, cooldown)
     return false
 end
 
--- DETEKSI PLAT DI ARENA (ORIGINAL v2.5)
 local function IsRealScrap(obj)
     if not obj:IsA("BasePart") or not obj.Parent then return false end
     
@@ -354,7 +350,6 @@ local function FindNearestArenaScrap()
     return best
 end
 
--- AMBIL LEMPENGAN PLAT (ORIGINAL v2.5)
 local function CollectScrapPlate(scrap)
     if not scrap or not scrap.Parent then return false end
     local root = GetRoot()
@@ -371,7 +366,6 @@ local function CollectScrapPlate(scrap)
     return true
 end
 
--- CARI PAD DI BASE (ORIGINAL v2.5)
 local function FindBasePad(keywords)
     local root = GetRoot()
     if not root then return nil end
@@ -458,7 +452,44 @@ local function ExecuteBasePad(actionName, keywords, guiPatterns, cooldown)
     return true
 end
 
--- RECYCLE DI BASE (ORIGINAL v2.5 LOCK POSISI & RESET 0 SAAT SAMPAI)
+local function ExecuteUpgradeRecycler()
+    if not CanRunAction("UpgradeRecyclerTrigger", 1.2) then return false end
+    local root = GetRoot()
+    local recPos = LOCKED_RECYCLER_POS or (root and root.Position)
+    
+    if recPos then
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("ProximityPrompt") and obj.Enabled then
+                local part = obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent or obj:FindFirstAncestorWhichIsA("BasePart")
+                if part then
+                    local d = (recPos - part.Position).Magnitude
+                    if d <= 25 then
+                        local t = (obj.ActionText .. " " .. obj.ObjectText .. " " .. obj.Name .. " " .. part.Name):lower()
+                        if t:find("upgrade") or t:find("speed") or t:find("level") or t:find("recycler") or t:find("boost") then
+                            TriggerPrompt(obj)
+                        end
+                    end
+                end
+            elseif obj:IsA("BasePart") then
+                local d = (recPos - obj.Position).Magnitude
+                if d <= 20 then
+                    local n = obj.Name:lower()
+                    if n:find("upgrade") or n:find("speed") or n:find("recycler") then
+                        FastTouch(obj)
+                        local cd = obj:FindFirstChildOfClass("ClickDetector")
+                        if cd and fireclickdetector then
+                            pcall(function() fireclickdetector(cd) end)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    TryClickGuiAction("UpgradeRecycler", { "upgrade recycler", "upgrade speed", "recycler speed", "recycler level", "boost recycler", "upgrade" }, 1.0)
+    return true
+end
+
 local function DoRecycleAtBase()
     if not CanRunAction("RecycleScrap", 2.0) then return false end
     
@@ -492,11 +523,8 @@ local function DoRecycleAtBase()
         CurrentBatchScraps = 0
         table.clear(BlacklistedScraps)
         
-        -- LANGSUNG PICU UPGRADE RECYCLER SAAT BERDIRI DI RECYCLER PAD
         if Flags.AutoUpgradeRecycler or Flags.AutoRebirth then
-            TriggerNearbyPrompt("upgrade", 14)
-            TriggerNearbyPrompt("recycler", 14)
-            TryClickGuiAction("UpgradeRecycler", { "upgrade recycler", "upgrade speed", "upgrade level" }, 1.5)
+            ExecuteUpgradeRecycler()
         end
     end
     
@@ -504,7 +532,6 @@ local function DoRecycleAtBase()
     return true
 end
 
--- UPGRADES (TERMASUK FIX UPGRADE RECYCLER)
 local function DoUpgrades()
     if Flags.AutoBuyFeeders or Flags.AutoRebirth then
         ExecuteBasePad("BuyFeeder", { "buy feeder", "new feeder", "feeder", "purchase feeder", "unlock feeder", "add feeder" }, { "buy feeder", "new feeder" }, 2.5)
@@ -513,9 +540,8 @@ local function DoUpgrades()
         ExecuteBasePad("UpgradeFeeder", { "upgrade feeder", "feed speed", "feeder level", "feeder upgrade" }, { "upgrade feeder", "upgrade speed" }, 2.5)
     end
     if Flags.AutoUpgradeRecycler or Flags.AutoRebirth then
-        ExecuteBasePad("UpgradeRecycler", { "upgrade recycler", "recycler speed", "recycler level", "upgrade speed", "recycler upgrade", "boost recycler" }, { "upgrade recycler", "upgrade speed" }, 2.5)
-        TriggerNearbyPrompt("upgrade", 14)
-        TriggerNearbyPrompt("recycler", 14)
+        ExecuteBasePad("UpgradeRecycler", { "upgrade recycler", "recycler speed", "recycler level", "upgrade speed", "recycler upgrade", "boost recycler" }, { "upgrade recycler", "upgrade speed" }, 2.0)
+        ExecuteUpgradeRecycler()
     end
     if Flags.AutoUpgradeCoop then
         ExecuteBasePad("UpgradeCoop", { "upgrade coop", "coop level", "expand coop" }, { "upgrade coop" }, 2.5)
@@ -526,14 +552,12 @@ local function DoUpgrades()
     DismissAllPopups()
 end
 
--- BACKGROUND THREAD UNTUK TOWER & AUTO NO THANKS
 task.spawn(function()
     while IsRunning do
         pcall(function()
             local pg = player:FindFirstChild("PlayerGui")
             if not pg then return end
             
-            -- 1. AUTO NO THANKS SAAT AYAM SELESAI / K.O.
             if Flags.AutoNoThanks then
                 for _, obj in ipairs(pg:GetDescendants()) do
                     local isMatch = false
@@ -565,7 +589,6 @@ task.spawn(function()
                 end
             end
             
-            -- 2. KIRIM AYAM KE TOWER (1X KLIK DENGAN JEDA 5 DETIK SETELAH NO THANKS)
             if (Flags.AutoStartTower or Flags.AutoRebirth) and not ChickenInTower and (tick() - LastTowerFinishedAt >= 5.0) then
                 for _, b in ipairs(pg:GetDescendants()) do
                     if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
@@ -586,7 +609,6 @@ task.spawn(function()
     end
 end)
 
--- REBIRTH SYSTEM (ORIGINAL v2.5)
 local function CheckAndDoRebirth()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
@@ -597,7 +619,6 @@ local function CheckAndDoRebirth()
                 if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
                     local text = ButtonText(b)
                     if text:find("not yet") or text:find("milestones") or text:find("x") or text:find("close") then
-                        -- Abaikan NOT YET
                     elseif (text:find("rebirth") or text:find("claim") or text:find("yes")) and CanRunAction("ExecuteRebirth", 5) then
                         ClickGuiButton(b)
                         task.wait(0.3)
@@ -622,7 +643,6 @@ local function GetArenaCenter()
     return nil
 end
 
--- MAIN AUTOMATION LOOP (PERSIS SAMA DENGAN v2.5 ASLI)
 task.spawn(function()
     while IsRunning do
         pcall(function()
@@ -641,14 +661,12 @@ task.spawn(function()
                 return
             end
             
-            -- 1. CEK REBIRTH
             if Flags.AutoRebirth then
                 CheckAndDoRebirth()
             end
             
             local targetCap = tonumber(Flags.ScrapCapacity) or 20
             
-            -- 2. SIKLUS AMBIL PLAT DI ARENA (ORIGINAL v2.5)
             if CurrentBatchScraps < targetCap then
                 SetState(State.COLLECTING)
                 local scrap = FindNearestArenaScrap()
@@ -663,11 +681,9 @@ task.spawn(function()
                     end
                 end
             else
-                -- 3. JALAN PULANG KE RECYCLER DI BASE
                 SetState(State.RECYCLING)
                 DoRecycleAtBase()
                 
-                -- 4. UPGRADE FEEDER & RECYCLER SETELAH SETOR
                 if CurrentBatchScraps == 0 then
                     SetState(State.UPGRADING)
                     DoUpgrades()
@@ -685,7 +701,6 @@ task.spawn(function()
     end
 end)
 
--- [[ GUI SETUP ]]
 local Gui = Instance.new("ScreenGui", CoreGui)
 Gui.Name = "ERDEVA_HUB"
 Gui.ResetOnSpawn = false
