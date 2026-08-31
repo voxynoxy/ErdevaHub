@@ -1,4 +1,4 @@
--- [[ ERDEVA HUB v2.7 - SAFE 1-CLICK TOWER & ANTI-KICK ]]
+-- [[ ERDEVA HUB v2.8 - PERFECT TOWER & AUTO NO THANKS ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -60,6 +60,8 @@ local Flags = {
 local LOCKED_RECYCLER_POS = nil
 local ToggleUpdaters = {}
 local CurrentBatchScraps = 0
+local ChickenInTower = false
+local LastTowerFinishedAt = 0
 
 local function GetChar() return player.Character end
 local function GetRoot()
@@ -71,7 +73,7 @@ local function GetHumanoid()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
--- DETEKSI LEVEL AYAM (CONTOH: YB LV.47)
+-- DETEKSI LEVEL AYAM
 local function GetHighestChickenLevel()
     local highest = 0
     local pg = player:FindFirstChild("PlayerGui")
@@ -213,7 +215,6 @@ local function WalkTo(targetPos, timeout, stopDist)
     return root and FlatDist(root.Position, targetPos) <= (stopDist + 2.5)
 end
 
--- KLIK AMAN (STANDAR EXECUTOR, ANTI-DETEKSI)
 local function ClickGuiButton(btn)
     if not btn or not btn.Parent then return false end
     pcall(function()
@@ -245,11 +246,37 @@ local function IsVisibleGui(obj)
     return true
 end
 
--- TUTUP POPUP NOT ENOUGH CASH
+-- AUTO NO THANKS SAAT AYAM K.O. (SESUAI GAMBAR)
+local function HandleTowerEndPopup()
+    local pg = player:FindFirstChild("PlayerGui")
+    if not pg then return false end
+    
+    local found = false
+    for _, b in ipairs(pg:GetDescendants()) do
+        if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
+            local text = ButtonText(b)
+            if text:find("no thanks") or text:find("nothanks") or text:find("no, thanks") or b.Name:lower() == "nothanks" then
+                ClickGuiButton(b)
+                ChickenInTower = false
+                LastTowerFinishedAt = tick()
+                Notify("ERDEVA HUB", "Tower Selesai (K.O.) - Auto No Thanks diklik!", 2.5)
+                found = true
+                break
+            end
+        end
+    end
+    return found
+end
+
+-- TUTUP POPUP NOT ENOUGH CASH & POPUP LAIN
 local function DismissAllPopups()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
     local clicked = false
+    
+    if Flags.AutoNoThanks then
+        HandleTowerEndPopup()
+    end
     
     for _, gui in ipairs(pg:GetDescendants()) do
         if gui:IsA("GuiObject") and IsVisibleGui(gui) then
@@ -474,7 +501,7 @@ local function ExecuteBasePad(actionName, keywords, guiPatterns, cooldown)
     return true
 end
 
--- RECYCLE DI BASE
+-- RECYCLE DI BASE (LOCKED POSISI)
 local function DoRecycleAtBase()
     if not CanRunAction("RecycleScrap", 2.0) then return false end
     
@@ -533,20 +560,22 @@ local function DoUpgrades()
     DismissAllPopups()
 end
 
--- KIRIM AYAM KE TOWER (1X KLIK, JEDA 30 DETIK AGAR TIDAK SPAM / MONDAR-MANDIR)
+-- KIRIM AYAM KE TOWER (HANYA 1X SAAT BELUM DI TOWER)
 local function SendChickenToTower()
-    if not CanRunAction("SendChickenTower", 30) then return false end
+    if ChickenInTower then return false end
+    if tick() - LastTowerFinishedAt < 3.0 then return false end
+    if not CanRunAction("SendChickenTower", 4.0) then return false end
     
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
     
-    -- Cari tombol TOWER di toolbar bawah
     for _, b in ipairs(pg:GetDescendants()) do
         if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
             local text = ButtonText(b)
-            if (text:find("tower") or text:find("kastil") or b.Name:lower() == "tower") and not text:find("rebirth") and not text:find("not yet") then
+            if (text:find("tower") or text:find("kastil") or b.Name:lower() == "tower") and not text:find("rebirth") and not text:find("not yet") and not text:find("no thanks") then
                 ClickGuiButton(b)
-                Notify("ERDEVA HUB", "Ayam berhasil dikirim ke Tower! Bertarung...", 3.0)
+                ChickenInTower = true
+                Notify("ERDEVA HUB", "Ayam dikirim ke Tower! Sedang bertarung...", 3.0)
                 return true
             end
         end
@@ -609,26 +638,21 @@ task.spawn(function()
                 return
             end
             
-            -- 1. CEK & KIRIM AYAM KE TOWER JIKA LEVEL MENCUKUPI (1X KLIK, JEDA 30 DETIK)
+            -- 1. CEK TOWER: JIKA LEVEL MENCUKUPI & AYAM SEDANG TIDAK DI TOWER ➔ KIRIM 1X
             local curLv = GetHighestChickenLevel()
             local reqLv = tonumber(Flags.TowerMinLevel) or 50
-            if (Flags.AutoStartTower or Flags.AutoRebirth) and curLv >= reqLv then
+            if (Flags.AutoStartTower or Flags.AutoRebirth) and curLv >= reqLv and not ChickenInTower then
                 SendChickenToTower()
             end
             
-            -- 2. AUTO NO THANKS DI BACKGROUND
-            if Flags.AutoNoThanks then
-                TryClickGuiAction("NoThanks", { "no thanks", "nothanks", "skip" }, 0.8)
-            end
-            
-            -- 3. CEK REBIRTH
+            -- 2. CEK REBIRTH
             if Flags.AutoRebirth then
                 CheckAndDoRebirth()
             end
             
             local targetCap = tonumber(Flags.ScrapCapacity) or 20
             
-            -- 4. SIKLUS AMBIL PLAT DI ARENA
+            -- 3. SIKLUS AMBIL PLAT DI ARENA
             if CurrentBatchScraps < targetCap then
                 SetState(State.COLLECTING)
                 local scrap = FindNearestArenaScrap()
@@ -643,11 +667,11 @@ task.spawn(function()
                     end
                 end
             else
-                -- 5. JALAN PULANG KE RECYCLER DI BASE
+                -- 4. JALAN PULANG KE RECYCLER DI BASE
                 SetState(State.RECYCLING)
                 DoRecycleAtBase()
                 
-                -- 6. UPGRADE FEEDER SETELAH SETOR
+                -- 5. UPGRADE FEEDER SETELAH SETOR
                 if CurrentBatchScraps == 0 then
                     SetState(State.UPGRADING)
                     DoUpgrades()
@@ -697,7 +721,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.7</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.8 (Master)</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
