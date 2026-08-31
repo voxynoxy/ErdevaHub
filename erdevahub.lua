@@ -1,4 +1,4 @@
--- [[ ERDEVA HUB v3.1 - RESTORED ORIGINAL CORE & NO THANKS ]]
+-- [[ ERDEVA HUB v3.2 - PRECISE CHICKEN LEVEL HUD ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -87,23 +87,46 @@ RunService.Stepped:Connect(function()
     end
 end)
 
--- DETEKSI LEVEL AYAM
+local function IsVisibleGui(obj)
+    if not obj:IsA("GuiObject") or not obj.Visible then return false end
+    local cur = obj.Parent
+    while cur and cur:IsA("GuiObject") do
+        if not cur.Visible then return false end
+        cur = cur.Parent
+    end
+    return true
+end
+
+-- DETEKSI LEVEL AYAM ASLI (HANYA DARI HUD AYAM KANAN ATAS)
 local function GetHighestChickenLevel()
-    local highest = 0
     local pg = player:FindFirstChild("PlayerGui")
-    if pg then
-        for _, lbl in ipairs(pg:GetDescendants()) do
-            if lbl:IsA("TextLabel") and lbl.Visible then
-                local t = lbl.Text
-                local lv = t:match("[Ll][Vv][Ll]?%.?:?%s*(%d+)") or t:match("[Ll][Ee][Vv][Ee][Ll]%.?:?%s*(%d+)")
+    if not pg then return 0 end
+    
+    for _, lbl in ipairs(pg:GetDescendants()) do
+        if lbl:IsA("TextLabel") and IsVisibleGui(lbl) then
+            local t = lbl.Text:lower()
+            local pName = (lbl.Parent and lbl.Parent.Name:lower()) or ""
+            local ppName = (lbl.Parent and lbl.Parent.Parent and lbl.Parent.Parent.Name:lower()) or ""
+            
+            -- Filter out bangunan/shop (Recycler Lv. 65, Feeder, dll)
+            if not t:find("recycler") and not t:find("feeder") and not t:find("coop") and not t:find("shop") and not t:find("milestone") and not t:find("rebirth") and not t:find("floor")
+               and not pName:find("recycler") and not pName:find("feeder") and not pName:find("coop") and not pName:find("shop") and not pName:find("milestone") and not pName:find("rebirth")
+               and not ppName:find("recycler") and not ppName:find("feeder") and not ppName:find("coop") then
+               
+                local lv = lbl.Text:match("[Ll][Vv][Ll]?%.?:?%s*(%d+)") or lbl.Text:match("[Ll][Ee][Vv][Ee][Ll]%.?:?%s*(%d+)")
                 if lv then
                     local num = tonumber(lv)
-                    if num and num > highest and num < 10000 then highest = num end
+                    if num and num > 0 and num < 5000 then
+                        -- Hanya ambil jika posisinya di bagian atas layar (HUD ayam kanan atas)
+                        if lbl.AbsolutePosition.Y < 250 then
+                            return num
+                        end
+                    end
                 end
             end
         end
     end
-    return highest
+    return 0
 end
 
 local State = {
@@ -240,16 +263,6 @@ local function ButtonText(btn)
     return ((btn:IsA("TextButton") and btn.Text or "") .. " " .. btn.Name .. " " .. img):lower()
 end
 
-local function IsVisibleGui(obj)
-    if not obj:IsA("GuiObject") or not obj.Visible then return false end
-    local cur = obj.Parent
-    while cur and cur:IsA("GuiObject") do
-        if not cur.Visible then return false end
-        cur = cur.Parent
-    end
-    return true
-end
-
 -- AUTO KLIK "NO THANKS" INSTAN
 local function HandleTowerEndPopup()
     local pg = player:FindFirstChild("PlayerGui")
@@ -355,7 +368,7 @@ local function TryClickGuiAction(actionName, patterns, cooldown)
     return false
 end
 
--- DETEKSI PLAT ASLI DI ARENA (KEMBALI KE FILTER ORIGINAL v2.5)
+-- DETEKSI PLAT ASLI DI ARENA
 local function IsRealScrap(obj)
     if not obj:IsA("BasePart") or not obj.Parent then return false end
     
@@ -745,7 +758,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v3.1 (Restored)</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v3.2</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
