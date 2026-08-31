@@ -1,10 +1,10 @@
--- [[ ERDEVA HUB v2.7 ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local StarterGui = game:GetService("StarterGui")
 local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
 local player = Players.LocalPlayer
 
@@ -140,38 +140,12 @@ local function TriggerPrompt(prompt)
     pcall(function()
         if fireproximityprompt then
             fireproximityprompt(prompt)
-        else
-            prompt:InputHoldBegin()
-            task.wait((prompt.HoldDuration or 0) + 0.02)
-            prompt:InputHoldEnd()
         end
+        prompt:InputHoldBegin()
+        task.wait((prompt.HoldDuration or 0) + 0.05)
+        prompt:InputHoldEnd()
     end)
     return true
-end
-
-local function TriggerNearbyPrompt(keyword, radius)
-    local root = GetRoot()
-    if not root then return false end
-    keyword = keyword and keyword:lower() or nil
-    radius = radius or 14
-    local best, bestDist = nil, radius
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("ProximityPrompt") and obj.Enabled then
-            local part = obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent or obj:FindFirstAncestorWhichIsA("BasePart")
-            if part then
-                local text = (obj.ActionText .. " " .. obj.ObjectText .. " " .. obj.Name .. " " .. part.Name):lower()
-                if not (text:find("event") or text:find("follow") or text:find("update") or text:find("news") or text:find("board")) then
-                    local d = (root.Position - part.Position).Magnitude
-                    if d <= bestDist and (not keyword or text:find(keyword)) then
-                        best = obj
-                        bestDist = d
-                    end
-                end
-            end
-        end
-    end
-    if best then return TriggerPrompt(best) end
-    return false
 end
 
 local function WalkTo(targetPos, timeout, stopDist)
@@ -363,7 +337,15 @@ local function CollectScrapPlate(scrap)
     FastTouch(scrap)
     WalkTo(scrap.Position, 1.8, 2.5)
     FastTouch(scrap)
-    TriggerNearbyPrompt("scrap", 10)
+    
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") and obj.Enabled then
+            local part = obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent or obj:FindFirstAncestorWhichIsA("BasePart")
+            if part and (root.Position - part.Position).Magnitude <= 10 then
+                TriggerPrompt(obj)
+            end
+        end
+    end
 
     CurrentBatchScraps = CurrentBatchScraps + 1
     BlacklistedScraps[scrap] = tick()
@@ -448,10 +430,6 @@ local function ExecuteBasePad(actionName, keywords, guiPatterns, cooldown)
                 TriggerPrompt(pad.prompt)
             elseif pad.prompt and pad.prompt:IsA("ClickDetector") and fireclickdetector then
                 pcall(function() fireclickdetector(pad.prompt) end)
-            else
-                for _, kw in ipairs(keywords) do
-                    TriggerNearbyPrompt(kw, 12)
-                end
             end
         end
     end
@@ -462,20 +440,47 @@ local function ExecuteBasePad(actionName, keywords, guiPatterns, cooldown)
     return true
 end
 
+-- EKSEKUSI UPGRADE RECYCLER DENGAN PROXIMITY + VIRTUAL INPUT [E]
 local function ExecuteUpgradeRecycler()
     local root = GetRoot()
-    local recPos = LOCKED_RECYCLER_POS or (root and root.Position)
-    if not recPos then return false end
+    if not root then return false end
     
+    -- 1. Pemicu ProximityPrompt di sekitar karakter
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("ProximityPrompt") and obj.Enabled then
             local part = obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent or obj:FindFirstAncestorWhichIsA("BasePart")
             if part then
-                local text = (obj.ActionText .. " " .. obj.ObjectText .. " " .. obj.Name .. " " .. part.Name):lower()
-                if (text:find("upgrade") or text:find("recycler")) and not (text:find("event") or text:find("follow") or text:find("coop") or text:find("feeder") or text:find("board") or text:find("update")) then
-                    local d = (recPos - part.Position).Magnitude
-                    if d <= 20 then
+                local d = (root.Position - part.Position).Magnitude
+                if d <= 15 then
+                    local text = (obj.ActionText .. " " .. obj.ObjectText .. " " .. obj.Name .. " " .. part.Name):lower()
+                    if not (text:find("event") or text:find("follow") or text:find("coop") or text:find("board")) then
                         TriggerPrompt(obj)
+                    end
+                end
+            end
+        end
+    end
+    
+    -- 2. Tekan Tombol Fisik [E]
+    pcall(function()
+        if VirtualInputManager then
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+            task.wait(0.2)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+        end
+    end)
+    
+    -- 3. Touch Pad & ClickDetector
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            local d = (root.Position - obj.Position).Magnitude
+            if d <= 12 then
+                local n = obj.Name:lower()
+                if n:find("upgrade") or n:find("recycler") or n:find("pad") or n:find("button") then
+                    FastTouch(obj)
+                    local cd = obj:FindFirstChildOfClass("ClickDetector")
+                    if cd and fireclickdetector then
+                        pcall(function() fireclickdetector(cd) end)
                     end
                 end
             end
@@ -507,7 +512,6 @@ local function DoRecycleAtBase()
         FastTouch(pad.part)
     end
     
-    TriggerNearbyPrompt("recycle", 14)
     TryClickGuiAction("RecycleScrap", { "recycle", "sell scrap", "convert", "empty", "deposit" }, 1.0)
     
     task.wait(0.4)
@@ -538,19 +542,16 @@ local function DoUpgrades()
     DismissAllPopups()
 end
 
--- TOWER & AUTO NO THANKS BACKGROUND (DENGAN FAILSAFE TIMEOUT)
 task.spawn(function()
     while IsRunning do
         pcall(function()
             local pg = player:FindFirstChild("PlayerGui")
             if not pg then return end
             
-            -- FAILSAFE: JIKA SUDAH LEWAT 45 DETIK, RESET STATUS AGAR BISA MASUK TOWER LAGI
-            if ChickenInTower and (tick() - TowerSentTime > 45) then
+            if ChickenInTower and (tick() - TowerSentTime > 60) then
                 ChickenInTower = false
             end
             
-            -- 1. DETEKSI SELESAI TOWER / NO THANKS
             if Flags.AutoNoThanks then
                 for _, obj in ipairs(pg:GetDescendants()) do
                     local isMatch = false
@@ -575,14 +576,13 @@ task.spawn(function()
                             ClickGuiButton(target)
                             ChickenInTower = false
                             LastTowerFinishedAt = tick()
-                            Notify("ERDEVA HUB", "Tower selesai! Auto No Thanks diklik.", 1.5)
+                            Notify("ERDEVA HUB", "Tower finished!", 1.5)
                             break
                         end
                     end
                 end
             end
             
-            -- 2. KLIK TOMBOL TOWER JIKA AYAM SEDANG TIDAK DI TOWER
             if (Flags.AutoStartTower or Flags.AutoRebirth) and not ChickenInTower and (tick() - LastTowerFinishedAt >= 1.5) then
                 for _, obj in ipairs(pg:GetDescendants()) do
                     if IsVisibleGui(obj) then
@@ -594,7 +594,7 @@ task.spawn(function()
                                     ClickGuiButton(btn)
                                     ChickenInTower = true
                                     TowerSentTime = tick()
-                                    Notify("ERDEVA HUB", "Ayam dikirim ke Tower! Menunggu K.O...", 2.0)
+                                    Notify("ERDEVA HUB", "Chicken sent to the Tower! Waiting...", 2.0)
                                     break
                                 end
                             end
@@ -679,16 +679,13 @@ task.spawn(function()
                     end
                 end
             else
-                -- 1. SETOR SCRAP KE RECYCLER
                 SetState(State.RECYCLING)
                 DoRecycleAtBase()
                 
                 if CurrentBatchScraps == 0 then
-                    -- 2. BELI & UPGRADE FEEDER DULU
                     SetState(State.UPGRADING)
                     DoUpgrades()
                     
-                    -- 3. UPGRADE RECYCLER SAAT UANG SETORAN SUDAH MASUK (SEBELUM BALIK KE ARENA)
                     if Flags.AutoUpgradeRecycler or Flags.AutoRebirth then
                         ExecuteUpgradeRecycler()
                     end
@@ -699,7 +696,6 @@ task.spawn(function()
                     end
                 end
                 
-                -- 4. KEMBALI KE ARENA
                 SetState(State.COLLECTING)
             end
         end)
@@ -966,7 +962,7 @@ local function AddInfo(k, v, isLive)
 end
 
 AddInfo("Hub",            "ERDEVA HUB")
-AddInfo("Game",           "Chicken Farm")
+AddInfo("Game",           "Grow a Chicken Figher")
 AddInfo("Plates Grabbed", "0 / 20", true)
 AddInfo("Status",         "Operational")
 
