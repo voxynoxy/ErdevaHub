@@ -1,4 +1,4 @@
--- [[ ERDEVA HUB v3.0 - MASTER ENGINE & INSTANT NO THANKS ]]
+-- [[ ERDEVA HUB v3.1 - RESTORED ORIGINAL CORE & NO THANKS ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -74,7 +74,7 @@ local function GetHumanoid()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
--- NOCLIP REAL-TIME (TEMBUS SEMUA PAGAR & OBJEK)
+-- NOCLIP REAL-TIME (TEMBUS SEMUA PAGAR)
 RunService.Stepped:Connect(function()
     if not IsRunning then return end
     local char = GetChar()
@@ -250,7 +250,7 @@ local function IsVisibleGui(obj)
     return true
 end
 
--- AUTO KLIK "NO THANKS" INSTAN (MENCAKUP SEMUA ELEMEN TEKS / TOMBOL)
+-- AUTO KLIK "NO THANKS" INSTAN
 local function HandleTowerEndPopup()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
@@ -278,7 +278,7 @@ local function HandleTowerEndPopup()
                 ClickGuiButton(target)
                 ChickenInTower = false
                 LastTowerFinishedAt = tick()
-                Notify("ERDEVA HUB", "Auto No Thanks berhasil diklik!", 2.0)
+                Notify("ERDEVA HUB", "Auto No Thanks diklik!", 2.0)
                 return true
             end
         end
@@ -355,7 +355,7 @@ local function TryClickGuiAction(actionName, patterns, cooldown)
     return false
 end
 
--- DETEKSI PLAT DI ARENA (JANGKAUAN SUPER LUAS 2500 STUDS)
+-- DETEKSI PLAT ASLI DI ARENA (KEMBALI KE FILTER ORIGINAL v2.5)
 local function IsRealScrap(obj)
     if not obj:IsA("BasePart") or not obj.Parent then return false end
     
@@ -368,7 +368,6 @@ local function IsRealScrap(obj)
     local pn = obj.Parent.Name:lower()
     local ppn = (obj.Parent.Parent and obj.Parent.Parent.Name:lower()) or ""
     
-    -- Filter bangunan base
     if n:find("fence") or n:find("wall") or n:find("floor") or n:find("base") or n:find("spawn") or n:find("grass") or n:find("terrain") then
         return false
     end
@@ -382,9 +381,7 @@ local function IsRealScrap(obj)
         return false
     end
     
-    -- Keyword plat lempengan
-    if n:find("scrap") or n:find("plate") or n:find("drop") or n:find("trash") or n:find("sheet") or n:find("debris") or n:find("metal") or n:find("iron") or n:find("pickup") or n:find("item")
-        or pn:find("scrap") or pn:find("plate") or pn:find("drop") or pn:find("drops") or pn:find("arena") then
+    if n:find("scrap") or n:find("plate") or n:find("drop") or n:find("trash") or n:find("sheet") or n:find("debris") or pn:find("scrap") or pn:find("plate") or pn:find("drop") or pn:find("drops") then
         return true
     end
     
@@ -400,17 +397,17 @@ local function CleanupScrapBlacklist()
     end
 end
 
--- CARI PLAT SCRAP DI ARENA (JANGKAUAN 2500 STUDS)
+-- CARI PLAT SCRAP TERDEKAT DI ARENA
 local function FindNearestArenaScrap()
     CleanupScrapBlacklist()
     local root = GetRoot()
     if not root then return nil end
-    local best, bestDist = nil, 99999
+    local best, bestDist = nil, 9999
     
     for _, obj in ipairs(workspace:GetDescendants()) do
         if IsRealScrap(obj) and not BlacklistedScraps[obj] then
             local d = FlatDist(root.Position, obj.Position)
-            if d < 2500 and d < bestDist then
+            if d < 800 and d < bestDist then
                 best = obj
                 bestDist = d
             end
@@ -565,16 +562,16 @@ end
 -- UPGRADES
 local function DoUpgrades()
     if Flags.AutoBuyFeeders or Flags.AutoRebirth then
-        ExecuteBasePad("BuyFeeder", { "buy feeder", "new feeder", "feeder", "purchase feeder", "unlock feeder", "add feeder", "chicken feeder" }, { "buy feeder", "new feeder" }, 2.0)
+        ExecuteBasePad("BuyFeeder", { "buy feeder", "new feeder", "feeder", "purchase feeder", "unlock feeder", "add feeder" }, { "buy feeder", "new feeder" }, 2.5)
     end
     if Flags.AutoUpgradeFeeder or Flags.AutoRebirth then
-        ExecuteBasePad("UpgradeFeeder", { "upgrade feeder", "feed speed", "feeder level", "feeder upgrade" }, { "upgrade feeder", "upgrade speed" }, 2.0)
+        ExecuteBasePad("UpgradeFeeder", { "upgrade feeder", "feed speed", "feeder level", "feeder upgrade" }, { "upgrade feeder", "upgrade speed" }, 2.5)
     end
     if Flags.AutoUpgradeRecycler or Flags.AutoRebirth then
-        ExecuteBasePad("UpgradeRecycler", { "upgrade recycler", "recycler speed", "recycler level", "upgrade speed" }, { "upgrade recycler" }, 2.0)
+        ExecuteBasePad("UpgradeRecycler", { "upgrade recycler", "recycler speed", "recycler level" }, { "upgrade recycler" }, 2.5)
     end
     if Flags.AutoUpgradeCoop then
-        ExecuteBasePad("UpgradeCoop", { "upgrade coop", "coop level", "expand coop" }, { "upgrade coop" }, 2.0)
+        ExecuteBasePad("UpgradeCoop", { "upgrade coop", "coop level", "expand coop" }, { "upgrade coop" }, 2.5)
     end
     if Flags.AutoOpenEggs then
         TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 2.0)
@@ -582,7 +579,7 @@ local function DoUpgrades()
     DismissAllPopups()
 end
 
--- KIRIM AYAM KE TOWER
+-- KIRIM AYAM KE TOWER (1X KLIK)
 local function SendChickenToTower()
     if ChickenInTower then return false end
     if tick() - LastTowerFinishedAt < 3.0 then return false end
@@ -597,7 +594,7 @@ local function SendChickenToTower()
             if (text:find("tower") or text:find("kastil") or b.Name:lower() == "tower") and not text:find("rebirth") and not text:find("not yet") and not text:find("no thanks") then
                 ClickGuiButton(b)
                 ChickenInTower = true
-                Notify("ERDEVA HUB", "Ayam dikirim ke Tower! Sedang bertarung...", 3.0)
+                Notify("ERDEVA HUB", "Ayam dikirim ke Tower!", 2.5)
                 return true
             end
         end
@@ -635,7 +632,7 @@ local function CheckAndDoRebirth()
     return false
 end
 
--- CARI PUSAT ARENA
+-- CARI PUSAT ARENA DI DEPAN
 local function GetArenaCenter()
     for _, obj in ipairs(workspace:GetDescendants()) do
         local n = obj.Name:lower()
@@ -646,7 +643,7 @@ local function GetArenaCenter()
     return nil
 end
 
--- MAIN AUTOMATION LOOP: FOKUS UTAMA MENGISI 20 SCRAP DI ARENA
+-- MAIN AUTOMATION LOOP
 task.spawn(function()
     while IsRunning do
         pcall(function()
@@ -679,23 +676,22 @@ task.spawn(function()
             
             local targetCap = tonumber(Flags.ScrapCapacity) or 20
             
-            -- 3. MISI UTAMA: FOKUS DI ARENA SAMPAI 20 SCRAP LENGKAP
+            -- 3. SIKLUS UTAMA: LARI KE DEPAN KE ARENA MEMUNGUT 20 PLAT
             if CurrentBatchScraps < targetCap then
                 SetState(State.COLLECTING)
                 local scrap = FindNearestArenaScrap()
                 if scrap then
                     CollectScrapPlate(scrap)
                 else
-                    -- Jika sedang di base, langsung jalan masuk ke Arena!
                     local arenaPos = GetArenaCenter()
                     if arenaPos and FlatDist(root.Position, arenaPos) > 15 then
-                        WalkTo(arenaPos, 4.0, 5.0)
+                        WalkTo(arenaPos, 3.5, 6.0)
                     else
-                        task.wait(0.1)
+                        task.wait(0.15)
                     end
                 end
             else
-                -- 4. PULANG KE RECYCLER DI BASE HANYA SAAT SUDAH PENUH (20)
+                -- 4. JALAN PULANG KE RECYCLER DI BASE HANYA SAAT 20 PLAT PENUH
                 SetState(State.RECYCLING)
                 DoRecycleAtBase()
                 
@@ -749,7 +745,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v3.0 (Master)</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v3.1 (Restored)</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
