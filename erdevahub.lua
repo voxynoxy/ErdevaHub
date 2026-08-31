@@ -52,6 +52,7 @@ local LOCKED_RECYCLER_POS = nil
 local ToggleUpdaters = {}
 local CurrentBatchScraps = 0
 local ChickenInTower = false
+local TowerSentTime = 0
 local LastTowerFinishedAt = 0
 
 local function GetChar() return player.Character end
@@ -68,8 +69,6 @@ RunService.Stepped:Connect(function()
     if not IsRunning then return end
     local char = player.Character
     if char then
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum then hum.WalkSpeed = 28 end
         for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") then part.CanCollide = false end
         end
@@ -95,6 +94,7 @@ player.CharacterAdded:Connect(function()
     task.wait(0.5)
     CurrentBatchScraps = 0
     ChickenInTower = false
+    TowerSentTime = 0
 end)
 
 local function FlatDist(a, b)
@@ -317,8 +317,9 @@ local function FindBasePad(keywords)
             end
         elseif obj:IsA("BasePart") then
             local name = obj.Name:lower()
+            local pName = obj.Parent and obj.Parent.Name:lower() or ""
             for _, kw in ipairs(keywords) do
-                if name:find(kw:lower()) then
+                if name:find(kw:lower()) or pName:find(kw:lower()) then
                     matched=true targetPart=obj
                     prompt = obj:FindFirstChildOfClass("ProximityPrompt") or obj:FindFirstChildOfClass("ClickDetector")
                     break
@@ -339,7 +340,7 @@ local function ExecuteBasePad(actionName, keywords, guiPatterns, cooldown)
     local pad = FindBasePad(keywords)
     if pad and pad.part then
         FastTouch(pad.part)
-        if WalkTo(pad.part.Position, 2.5, 3.5) then
+        if WalkTo(pad.part.Position, 3.5, 3.5) then
             FastTouch(pad.part)
             if pad.prompt and pad.prompt:IsA("ProximityPrompt") then
                 TriggerPrompt(pad.prompt)
@@ -402,12 +403,16 @@ task.spawn(function()
         pcall(function()
             local pg = player:FindFirstChild("PlayerGui")
             if not pg then return end
+            if ChickenInTower and (tick() - TowerSentTime >= 120) then
+                ChickenInTower = false
+                TowerSentTime = 0
+            end
             if Flags.AutoNoThanks then
                 for _, obj in ipairs(pg:GetDescendants()) do
                     local isMatch = false
                     if (obj:IsA("TextLabel") or obj:IsA("TextButton")) and IsVisibleGui(obj) then
                         local t = obj.Text:lower()
-                        if t:find("no thanks") or t:find("nothanks") or t:find("no, thanks") then isMatch=true end
+                        if t:find("no thanks") or t:find("nothanks") or t:find("no, thanks") or t:find("keep climbing") then isMatch=true end
                     end
                     if isMatch then
                         local target = obj
@@ -417,6 +422,7 @@ task.spawn(function()
                         if target then
                             ClickGuiButton(target)
                             ChickenInTower = false
+                            TowerSentTime = 0
                             LastTowerFinishedAt = tick()
                             break
                         end
@@ -431,6 +437,7 @@ task.spawn(function()
                             if CanRunAction("SendChickenTower", 5.0) then
                                 ClickGuiButton(b)
                                 ChickenInTower = true
+                                TowerSentTime = tick()
                                 break
                             end
                         end
@@ -556,38 +563,22 @@ Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0,5)
 CloseBtn.MouseButton1Click:Connect(Shutdown)
 
 local MiniIcon = Instance.new("Frame", Gui)
-MiniIcon.Size = UDim2.fromOffset(62, 62)
-MiniIcon.Position = UDim2.new(0, 16, 0.5, -31)
-MiniIcon.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+MiniIcon.Size = UDim2.fromOffset(56, 56)
+MiniIcon.Position = UDim2.new(0, 16, 0.5, -28)
+MiniIcon.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 MiniIcon.BorderSizePixel = 0
 MiniIcon.Visible = false
-Instance.new("UICorner", MiniIcon).CornerRadius = UDim.new(0, 14)
+Instance.new("UICorner", MiniIcon).CornerRadius = UDim.new(0, 12)
 local MiniStroke = Instance.new("UIStroke", MiniIcon)
 MiniStroke.Color = C.Red MiniStroke.Thickness = 1.5
 
-local MiniGrad = Instance.new("UIGradient", MiniIcon)
-MiniGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 10, 10)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(8, 8, 8)),
-})
-MiniGrad.Rotation = 135
-
-local MiniOuter = Instance.new("Frame", MiniIcon)
-MiniOuter.Size = UDim2.fromOffset(42, 42)
-MiniOuter.AnchorPoint = Vector2.new(0.5, 0.5)
-MiniOuter.Position = UDim2.new(0.5, 0, 0.45, 0)
-MiniOuter.BackgroundColor3 = Color3.fromRGB(30, 8, 8)
-MiniOuter.BorderSizePixel = 0
-Instance.new("UICorner", MiniOuter).CornerRadius = UDim.new(1, 0)
-
-local MiniFace = Instance.new("TextLabel", MiniOuter)
-MiniFace.Size = UDim2.new(1,0,1,0)
-MiniFace.BackgroundTransparency = 1
-MiniFace.Text = "🥷"
-MiniFace.TextSize = 22
-MiniFace.Font = Enum.Font.GothamBold
-MiniFace.TextXAlignment = Enum.TextXAlignment.Center
-MiniFace.TextYAlignment = Enum.TextYAlignment.Center
+local MiniImage = Instance.new("ImageLabel", MiniIcon)
+MiniImage.Size = UDim2.fromOffset(36, 36)
+MiniImage.AnchorPoint = Vector2.new(0.5, 0.5)
+MiniImage.Position = UDim2.new(0.5, 0, 0.42, 0)
+MiniImage.BackgroundTransparency = 1
+MiniImage.Image = "rbxassetid://7072718362"
+MiniImage.ImageColor3 = Color3.fromRGB(240, 240, 240)
 
 local MiniLabel = Instance.new("TextLabel", MiniIcon)
 MiniLabel.Size = UDim2.new(1, 0, 0, 12)
@@ -660,8 +651,8 @@ UserInputService.InputChanged:Connect(function(i)
         if miniDrag then
             local d = i.Position - mDStart
             MiniIcon.Position = UDim2.new(
-                mDFStart.X.Scale, math.clamp(mDFStart.X.Offset+d.X, 0, vs.X-62),
-                mDFStart.Y.Scale, math.clamp(mDFStart.Y.Offset+d.Y, 0, vs.Y-62)
+                mDFStart.X.Scale, math.clamp(mDFStart.X.Offset+d.X, 0, vs.X-56),
+                mDFStart.Y.Scale, math.clamp(mDFStart.Y.Offset+d.Y, 0, vs.Y-56)
             )
         end
     end
@@ -750,6 +741,7 @@ local function AddToggle(parent, label, key)
                 CurrentBatchScraps = 0
                 table.clear(BlacklistedScraps)
                 ChickenInTower = false
+                TowerSentTime = 0
                 SetState(State.IDLE)
             end
         end
@@ -853,7 +845,7 @@ local function AddInfo(k, v, isLive)
 end
 
 AddInfo("Hub",            "ERDEVA HUB")
-AddInfo("Game",           "Chicken Farm")
+AddInfo("Game",           "Grow a Chicken Fight")
 AddInfo("Plates Grabbed", "0 / 20", true)
 AddInfo("Status",         "Operational")
 
