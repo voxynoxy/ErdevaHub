@@ -44,7 +44,7 @@ local Flags = {
     AutoUpgradeFeeder   = false,
     AutoBuyFeeders      = false,
     AutoStartTower      = false,
-    AutoNoThanks        = false,
+    AutoNoThanks        = true,
     AutoStartChaos      = false,
 }
 
@@ -327,10 +327,25 @@ local function FindBasePad(keywords)
                     break
                 end
             end
+        elseif obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") then
+            local txt = ""
+            for _, t in ipairs(obj:GetDescendants()) do
+                if t:IsA("TextLabel") then txt = txt .. " " .. t.Text:lower() end
+            end
+            for _, kw in ipairs(keywords) do
+                if txt:find(kw:lower()) then
+                    local part = obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent or obj:FindFirstAncestorWhichIsA("BasePart")
+                    if part then
+                        matched=true targetPart=part
+                        prompt = part:FindFirstChildOfClass("ProximityPrompt") or part:FindFirstChildOfClass("ClickDetector")
+                        break
+                    end
+                end
+            end
         end
         if matched and targetPart and targetPart:IsA("BasePart") then
             local d = (root.Position - targetPart.Position).Magnitude
-            if d < 300 and d < bestDist then bestDist=d bestPart=targetPart bestPrompt=prompt end
+            if d < 350 and d < bestDist then bestDist=d bestPart=targetPart bestPrompt=prompt end
         end
     end
     if bestPart then return { part=bestPart, prompt=bestPrompt } end
@@ -338,21 +353,22 @@ local function FindBasePad(keywords)
 end
 
 local function ExecuteBasePad(actionName, keywords, guiPatterns, cooldown)
-    if not CanRunAction(actionName, cooldown or 2.0) then return false end
+    if not CanRunAction(actionName, cooldown or 2.5) then return false end
     local pad = FindBasePad(keywords)
     if pad and pad.part then
         FastTouch(pad.part)
-        WalkTo(pad.part.Position, 2.5, 3.5)
-        FastTouch(pad.part)
-        if pad.prompt and pad.prompt:IsA("ProximityPrompt") then
-            TriggerPrompt(pad.prompt)
-        elseif pad.prompt and pad.prompt:IsA("ClickDetector") and fireclickdetector then
-            pcall(function() fireclickdetector(pad.prompt) end)
-        else
-            for _, kw in ipairs(keywords) do TriggerNearbyPrompt(kw, 12) end
+        if WalkTo(pad.part.Position, 3.5, 3.5) then
+            FastTouch(pad.part)
+            if pad.prompt and pad.prompt:IsA("ProximityPrompt") then
+                TriggerPrompt(pad.prompt)
+            elseif pad.prompt and pad.prompt:IsA("ClickDetector") and fireclickdetector then
+                pcall(function() fireclickdetector(pad.prompt) end)
+            else
+                for _, kw in ipairs(keywords) do TriggerNearbyPrompt(kw, 12) end
+            end
         end
     end
-    if guiPatterns then TryClickGuiAction(actionName, guiPatterns, cooldown or 2.0) end
+    if guiPatterns then TryClickGuiAction(actionName, guiPatterns, cooldown or 2.5) end
     DismissAllPopups()
     return true
 end
@@ -366,13 +382,13 @@ local function DoRecycleAtBase()
         if pad and pad.part then targetPos = pad.part.Position end
     end
     if not targetPos then return false end
-    WalkTo(targetPos, 5.0, 2.8)
+    local arrived = WalkTo(targetPos, 5.0, 3.0)
     if pad and pad.part then FastTouch(pad.part) end
     TriggerNearbyPrompt("recycle", 14)
     TryClickGuiAction("RecycleScrap", {"recycle","sell scrap","convert","empty","deposit"}, 1.0)
     task.wait(0.4)
     local root = GetRoot()
-    if root and FlatDist(root.Position, targetPos) <= 4.0 then
+    if arrived or (root and FlatDist(root.Position, targetPos) <= 6.5) then
         CurrentBatchScraps = 0
         table.clear(BlacklistedScraps)
     end
@@ -382,19 +398,19 @@ end
 
 local function DoUpgrades()
     if Flags.AutoBuyFeeders or Flags.AutoRebirth then
-        ExecuteBasePad("BuyFeeder", {"buy feeder","new feeder","feeder","purchase feeder","unlock feeder","add feeder","buy"}, {"buy feeder","new feeder","feeder"}, 1.5)
+        ExecuteBasePad("BuyFeeder", { "buy feeder", "new feeder", "feeder", "purchase feeder", "unlock feeder", "add feeder" }, { "buy feeder", "new feeder" }, 2.5)
     end
     if Flags.AutoUpgradeFeeder or Flags.AutoRebirth then
-        ExecuteBasePad("UpgradeFeeder", {"upgrade feeder","feed speed","feeder level","feeder upgrade"}, {"upgrade feeder","upgrade speed"}, 1.5)
+        ExecuteBasePad("UpgradeFeeder", { "upgrade feeder", "feed speed", "feeder level", "feeder upgrade" }, { "upgrade feeder", "upgrade speed" }, 2.5)
     end
     if Flags.AutoUpgradeRecycler or Flags.AutoRebirth then
-        ExecuteBasePad("UpgradeRecycler", {"upgrade recycler","recycler speed","recycler level","upgrade speed","recycler upgrade"}, {"upgrade recycler","upgrade speed"}, 1.5)
+        ExecuteBasePad("UpgradeRecycler", { "upgrade recycler", "recycler speed", "recycler level", "upgrade speed", "recycler upgrade" }, { "upgrade recycler", "upgrade speed" }, 2.5)
     end
     if Flags.AutoUpgradeCoop then
-        ExecuteBasePad("UpgradeCoop", {"upgrade coop","coop level","expand coop"}, {"upgrade coop"}, 2.0)
+        ExecuteBasePad("UpgradeCoop", { "upgrade coop", "coop level", "expand coop" }, { "upgrade coop" }, 2.5)
     end
     if Flags.AutoOpenEggs then
-        TryClickGuiAction("OpenEggs", {"hatch","open egg","open","egg"}, 2.0)
+        TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 2.0)
     end
     DismissAllPopups()
 end
@@ -430,7 +446,7 @@ task.spawn(function()
                     end
                 end
             end
-            if (Flags.AutoStartTower or Flags.AutoRebirth) and not ChickenInTower and (tick() - LastTowerFinishedAt >= 120.0) then
+            if (Flags.AutoStartTower or Flags.AutoRebirth) and not ChickenInTower and (tick() - LastTowerFinishedAt >= 5.0) then
                 for _, b in ipairs(pg:GetDescendants()) do
                     if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
                         local text = ButtonText(b)
@@ -578,7 +594,7 @@ MiniImage.Size = UDim2.fromOffset(36, 36)
 MiniImage.AnchorPoint = Vector2.new(0.5, 0.5)
 MiniImage.Position = UDim2.new(0.5, 0, 0.42, 0)
 MiniImage.BackgroundTransparency = 1
-MiniImage.Image = "rbxassetid://10734898102"
+MiniImage.Image = "http://www.roblox.com/asset/?id=6031075938"
 MiniImage.ImageColor3 = Color3.fromRGB(240, 240, 240)
 
 local MiniLabel = Instance.new("TextLabel", MiniIcon)
@@ -818,7 +834,7 @@ AddButton(PlotPage, "[LOCK] Set Recycler Pad", function(btn)
         LOCKED_RECYCLER_POS = root.Position
         btn.Text = "✓ Recycler Pad Locked!"
         Notify("ERDEVA HUB", "Recycler Pad locked!", 3.5)
-        task.delay(2.5, function() btn.Text = "Set Recycler Pad" end)
+        task.delay(2.5, function() btn.Text = "[LOCK] Set Recycler Pad" end)
     end
 end)
 AddToggle(PlotPage, "Auto Buy Feeders",    "AutoBuyFeeders")
@@ -845,7 +861,7 @@ local function AddInfo(k, v, isLive)
     if isLive then LiveCarriedLabel = r end
 end
 
-AddInfo("Hub",            "ERDEVA HUB v2.5")
+AddInfo("Hub",            "ERDEVA HUB")
 AddInfo("Game",           "Grow a Chicken Fight")
 AddInfo("Plates Grabbed", "0 / 20", true)
 AddInfo("Status",         "Operational")
