@@ -956,4 +956,4 @@ task.spawn(function()
     end
 end)
 
-SetTab("Battle")
+SetTab("Plot")
