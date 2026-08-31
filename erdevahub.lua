@@ -1,9 +1,10 @@
--- [[ ERDEVA HUB v2.8 - PERFECT TOWER & AUTO NO THANKS ]]
+-- [[ ERDEVA HUB v2.9 - REAL-TIME NOCLIP & POST-REBIRTH BUY ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local StarterGui = game:GetService("StarterGui")
+local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 
@@ -73,6 +74,19 @@ local function GetHumanoid()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
+-- NOCLIP REAL-TIME SETIAP FRAME (TEMBUS PAGAR & SEMUA OBJEK)
+RunService.Stepped:Connect(function()
+    if not IsRunning then return end
+    local char = GetChar()
+    if char then
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") and part.CanCollide then
+                part.CanCollide = false
+            end
+        end
+    end
+end)
+
 -- DETEKSI LEVEL AYAM
 local function GetHighestChickenLevel()
     local highest = 0
@@ -121,21 +135,11 @@ local function CanRunAction(action, cooldown)
     return true
 end
 
-local function ApplyNoCollision(char)
-    if not char then return end
-    for _, part in ipairs(char:GetDescendants()) do
-        if part:IsA("BasePart") then
-            part.CanCollide = false
-        end
-    end
-end
-
 player.CharacterAdded:Connect(function(char)
     task.wait(0.5)
     CurrentBatchScraps = 0
-    if IsRunning then ApplyNoCollision(char) end
+    ChickenInTower = false
 end)
-ApplyNoCollision(GetChar())
 
 local function FlatDist(a, b)
     return Vector2.new(a.X - b.X, a.Z - b.Z).Magnitude
@@ -246,7 +250,7 @@ local function IsVisibleGui(obj)
     return true
 end
 
--- AUTO NO THANKS SAAT AYAM K.O. (SESUAI GAMBAR)
+-- AUTO NO THANKS SAAT AYAM K.O.
 local function HandleTowerEndPopup()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
@@ -268,7 +272,7 @@ local function HandleTowerEndPopup()
     return found
 end
 
--- TUTUP POPUP NOT ENOUGH CASH & POPUP LAIN
+-- TUTUP POPUP NOT ENOUGH CASH
 local function DismissAllPopups()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
@@ -540,19 +544,19 @@ local function DoRecycleAtBase()
     return true
 end
 
--- UPGRADES
+-- UPGRADES (BELI FEEDER, UPGRADE FEEDER, UPGRADE RECYCLER, UPGRADE COOP)
 local function DoUpgrades()
     if Flags.AutoBuyFeeders or Flags.AutoRebirth then
-        ExecuteBasePad("BuyFeeder", { "buy feeder", "new feeder", "feeder", "purchase feeder", "unlock feeder", "add feeder" }, { "buy feeder", "new feeder" }, 2.5)
+        ExecuteBasePad("BuyFeeder", { "buy feeder", "new feeder", "feeder", "purchase feeder", "unlock feeder", "add feeder", "chicken feeder" }, { "buy feeder", "new feeder" }, 2.0)
     end
     if Flags.AutoUpgradeFeeder or Flags.AutoRebirth then
-        ExecuteBasePad("UpgradeFeeder", { "upgrade feeder", "feed speed", "feeder level", "feeder upgrade" }, { "upgrade feeder", "upgrade speed" }, 2.5)
+        ExecuteBasePad("UpgradeFeeder", { "upgrade feeder", "feed speed", "feeder level", "feeder upgrade" }, { "upgrade feeder", "upgrade speed" }, 2.0)
     end
-    if Flags.AutoUpgradeRecycler then
-        ExecuteBasePad("UpgradeRecycler", { "upgrade recycler", "recycler speed", "recycler level" }, { "upgrade recycler" }, 2.5)
+    if Flags.AutoUpgradeRecycler or Flags.AutoRebirth then
+        ExecuteBasePad("UpgradeRecycler", { "upgrade recycler", "recycler speed", "recycler level", "upgrade speed" }, { "upgrade recycler" }, 2.0)
     end
     if Flags.AutoUpgradeCoop then
-        ExecuteBasePad("UpgradeCoop", { "upgrade coop", "coop level", "expand coop" }, { "upgrade coop" }, 2.5)
+        ExecuteBasePad("UpgradeCoop", { "upgrade coop", "coop level", "expand coop" }, { "upgrade coop" }, 2.0)
     end
     if Flags.AutoOpenEggs then
         TryClickGuiAction("OpenEggs", { "hatch", "open egg", "open", "egg" }, 2.0)
@@ -560,7 +564,7 @@ local function DoUpgrades()
     DismissAllPopups()
 end
 
--- KIRIM AYAM KE TOWER (HANYA 1X SAAT BELUM DI TOWER)
+-- KIRIM AYAM KE TOWER
 local function SendChickenToTower()
     if ChickenInTower then return false end
     if tick() - LastTowerFinishedAt < 3.0 then return false end
@@ -599,7 +603,12 @@ local function CheckAndDoRebirth()
                         ClickGuiButton(b)
                         task.wait(0.3)
                         TryClickGuiAction("RebirthConfirm", { "confirm", "yes", "do rebirth" }, 1.5)
-                        task.wait(1.0)
+                        task.wait(1.5)
+                        
+                        -- LANGSUNG EKSEKUSI BUY FEEDER DI BASE SETELAH REBIRTH!
+                        CurrentBatchScraps = 0
+                        table.clear(BlacklistedScraps)
+                        DoUpgrades()
                         return true
                     end
                 end
@@ -638,7 +647,7 @@ task.spawn(function()
                 return
             end
             
-            -- 1. CEK TOWER: JIKA LEVEL MENCUKUPI & AYAM SEDANG TIDAK DI TOWER ➔ KIRIM 1X
+            -- 1. CEK TOWER
             local curLv = GetHighestChickenLevel()
             local reqLv = tonumber(Flags.TowerMinLevel) or 50
             if (Flags.AutoStartTower or Flags.AutoRebirth) and curLv >= reqLv and not ChickenInTower then
@@ -671,7 +680,7 @@ task.spawn(function()
                 SetState(State.RECYCLING)
                 DoRecycleAtBase()
                 
-                -- 5. UPGRADE FEEDER SETELAH SETOR
+                -- 5. UPGRADE & BUY FEEDER SETELAH SETOR
                 if CurrentBatchScraps == 0 then
                     SetState(State.UPGRADING)
                     DoUpgrades()
@@ -721,7 +730,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.8 (Master)</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.9</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -832,8 +841,11 @@ local function AddToggle(parent, label, key)
             if ns then
                 SetFlag("AutoGrabScraps", true)
                 SetFlag("AutoRecycleScrap", true)
+                SetFlag("AutoUpgradeRecycler", true)
                 SetFlag("AutoBuyFeeders", true)
                 SetFlag("AutoUpgradeFeeder", true)
+                SetFlag("AutoStartTower", true)
+                SetFlag("AutoNoThanks", true)
             else
                 for _, fk in ipairs({"AutoOpenEggs","AutoGrabScraps","AutoRecycleScrap","AutoUpgradeRecycler",
                                       "AutoBuyFeeders","AutoUpgradeFeeder","AutoUpgradeCoop",
@@ -965,4 +977,4 @@ task.spawn(function()
     end
 end)
 
-SetTab("Battle")
+SetTab("Plot")
