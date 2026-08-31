@@ -1,4 +1,4 @@
--- [[ ERDEVA HUB v2.3 - FIXED TOWER & REBIRTH ON TOP OF v2.1 ]]
+-- [[ ERDEVA HUB v2.4 - PERFECTION & FIXED COUNTER RESET ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -70,33 +70,7 @@ local function GetHumanoid()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
--- MENGHITUNG JUMLAH PLAT YANG MENEMPEL DI KEPALA KARAKTER
-local function GetPlatesOnCharacter()
-    local char = GetChar()
-    if not char then return 0 end
-    local count = 0
-    for _, item in ipairs(char:GetChildren()) do
-        if item:IsA("BasePart") then
-            local n = item.Name:lower()
-            if n ~= "humanoidrootpart" and n ~= "head" and n ~= "torso" and n ~= "uppertorso" and n ~= "lowertorso" and not n:find("arm") and not n:find("leg") and not n:find("hand") and not n:find("foot") then
-                count = count + 1
-            end
-        elseif item:IsA("Model") and (item.Name:lower():find("scrap") or item.Name:lower():find("plate") or item.Name:lower():find("drop")) then
-            count = count + 1
-        end
-    end
-    return count
-end
-
-local function GetTotalCarried()
-    local onChar = GetPlatesOnCharacter()
-    if onChar > 0 then
-        CurrentBatchScraps = math.max(CurrentBatchScraps, onChar)
-    end
-    return CurrentBatchScraps
-end
-
--- DETEKSI LEVEL AYAM DARI UI (CONTOH: YB LV.47)
+-- DETEKSI LEVEL AYAM (YB LV.47)
 local function GetHighestChickenLevel()
     local highest = 0
     local pg = player:FindFirstChild("PlayerGui")
@@ -334,7 +308,7 @@ local function TryClickGuiAction(actionName, patterns, cooldown)
     return false
 end
 
--- DETEKSI HANYA PLAT DI ARENA
+-- DETEKSI PLAT SCRAP ASLI DI ARENA
 local function IsRealScrap(obj)
     if not obj:IsA("BasePart") or not obj.Parent then return false end
     
@@ -406,15 +380,9 @@ local function CollectScrapPlate(scrap)
     FastTouch(scrap)
     TriggerNearbyPrompt("scrap", 10)
 
-    local pickedUp = (not scrap.Parent) or scrap:IsDescendantOf(char) or FlatDist(root.Position, scrap.Position) <= 3.0
-    if pickedUp then
-        CurrentBatchScraps = CurrentBatchScraps + 1
-        BlacklistedScraps[scrap] = nil
-        return true
-    else
-        BlacklistedScraps[scrap] = tick()
-        return false
-    end
+    CurrentBatchScraps = CurrentBatchScraps + 1
+    BlacklistedScraps[scrap] = tick()
+    return true
 end
 
 -- CARI PAD DI BASE
@@ -504,7 +472,7 @@ local function ExecuteBasePad(actionName, keywords, guiPatterns, cooldown)
     return true
 end
 
--- RECYCLE
+-- RECYCLE (SATU-SATUNYA TEMPAT RESET COUNTER KE 0)
 local function DoRecycleAtBase()
     if not CanRunAction("RecycleScrap", 1.5) then return false end
     
@@ -575,7 +543,6 @@ end
 local function RunTowerBattle()
     if not CanRunAction("TowerStartAction", 3) and not IsInTowerBattle() then return false end
     
-    -- Tekan tombol Tower di toolbar bawah / GUI
     TryClickGuiAction("StartTowerBtn", { "tower", "battle", "enter" }, 2.0)
     task.wait(0.8)
     
@@ -594,43 +561,29 @@ local function RunTowerBattle()
     return true
 end
 
--- REBIRTH SYSTEM SESUAI FOTO 2
+-- REBIRTH SYSTEM (HANYA KLIK JIKA BUKAN 'NOT YET')
 local function CheckAndDoRebirth()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
     
-    -- Buka menu Rebirth dari tombol api di kanan layar
-    TryClickGuiAction("OpenRebirthMenu", { "rebirth" }, 2.0)
-    task.wait(0.2)
-    
-    local canRebirth = false
-    local rebirthBtn = nil
-    
-    for _, b in ipairs(pg:GetDescendants()) do
-        if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
-            local text = ButtonText(b)
-            -- JANGAN klik jika tombol masih "NOT YET"
-            if not text:find("not yet") and not text:find("milestones") and not text:find("auto rebirth") then
-                if text:find("rebirth") or text:find("claim") or text:find("do rebirth") or text:find("yes") then
-                    canRebirth = true
-                    rebirthBtn = b
-                    break
+    for _, modal in ipairs(pg:GetDescendants()) do
+        if modal:IsA("Frame") and IsVisibleGui(modal) and modal.Name:lower():find("rebirth") then
+            for _, b in ipairs(modal:GetDescendants()) do
+                if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
+                    local text = ButtonText(b)
+                    if text:find("not yet") or text:find("milestones") or text:find("x") or text:find("close") then
+                        -- Abaikan tombol NOT YET & close
+                    elseif (text:find("rebirth") or text:find("claim") or text:find("yes")) and CanRunAction("ExecuteRebirth", 5) then
+                        ClickGuiButton(b)
+                        task.wait(0.3)
+                        TryClickGuiAction("RebirthConfirm", { "confirm", "yes", "do rebirth" }, 1.5)
+                        task.wait(1.0)
+                        return true
+                    end
                 end
             end
         end
     end
-    
-    if canRebirth and rebirthBtn and CanRunAction("ExecuteRebirth", 5) then
-        ClickGuiButton(rebirthBtn)
-        task.wait(0.3)
-        TryClickGuiAction("RebirthConfirm", { "confirm", "yes", "do rebirth" }, 1.5)
-        task.wait(1.5)
-        CurrentBatchScraps = 0
-        table.clear(BlacklistedScraps)
-        table.clear(ActionCooldowns)
-        return true
-    end
-    
     return false
 end
 
@@ -663,7 +616,7 @@ task.spawn(function()
                 return
             end
             
-            -- 1. CEK TOWER JIKA LEVEL MENCUKUPI
+            -- 1. CEK TOWER
             local curLv = GetHighestChickenLevel()
             local reqLv = tonumber(Flags.TowerMinLevel) or 50
             if (Flags.AutoStartTower or Flags.AutoRebirth) and (curLv >= reqLv or IsInTowerBattle()) then
@@ -679,10 +632,9 @@ task.spawn(function()
             end
             
             local targetCap = tonumber(Flags.ScrapCapacity) or 20
-            local currentTotal = GetTotalCarried()
             
-            -- 3. SIKLUS AMBIL PLAT DI ARENA
-            if currentTotal < targetCap then
+            -- 3. SIKLUS AMBIL PLAT DI ARENA (ANGKA PASTI NAIK TERUS)
+            if CurrentBatchScraps < targetCap then
                 SetState(State.COLLECTING)
                 local scrap = FindNearestArenaScrap()
                 if scrap then
@@ -747,7 +699,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.3 (Complete)</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v2.4</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -957,9 +909,9 @@ AddInfo("Status",         "Operational")
 task.spawn(function()
     while IsRunning do
         if LiveCarriedLabel and LiveCarriedLabel.Parent then
-            LiveCarriedLabel.Text = tostring(GetTotalCarried()) .. " / " .. tostring(Flags.ScrapCapacity or 20)
+            LiveCarriedLabel.Text = tostring(CurrentBatchScraps) .. " / " .. tostring(Flags.ScrapCapacity or 20)
         end
-        task.wait(0.15)
+        task.wait(0.1)
     end
 end)
 
