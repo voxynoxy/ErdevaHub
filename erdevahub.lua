@@ -1,10 +1,9 @@
--- [[ ERDEVA HUB v3.7 - PERFECT TOWER CYCLE & RECYCLER UPGRADE ]]
+-- [[ ERDEVA HUB v3.8 - FIXED BATTLE & UPGRADE RECYCLER ONLY ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local StarterGui = game:GetService("StarterGui")
-local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 
@@ -73,19 +72,6 @@ local function GetHumanoid()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
--- NOCLIP REAL-TIME
-RunService.Stepped:Connect(function()
-    if not IsRunning then return end
-    local char = GetChar()
-    if char then
-        for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") and part.CanCollide then
-                part.CanCollide = false
-            end
-        end
-    end
-end)
-
 local State = {
     IDLE       = "IDLE",
     COLLECTING = "COLLECTING",
@@ -115,11 +101,22 @@ local function CanRunAction(action, cooldown)
     return true
 end
 
+local function ApplyNoCollision(char)
+    if not char then return end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = false
+        end
+    end
+end
+
 player.CharacterAdded:Connect(function(char)
     task.wait(0.5)
     CurrentBatchScraps = 0
     ChickenInTower = false
+    if IsRunning then ApplyNoCollision(char) end
 end)
+ApplyNoCollision(GetChar())
 
 local function FlatDist(a, b)
     return Vector2.new(a.X - b.X, a.Z - b.Z).Magnitude
@@ -229,51 +226,11 @@ local function IsVisibleGui(obj)
     return true
 end
 
--- AUTO KLIK "NO THANKS" SAAT AYAM SELESAI / K.O.
-local function HandleTowerEndPopup()
-    local pg = player:FindFirstChild("PlayerGui")
-    if not pg then return false end
-    
-    for _, obj in ipairs(pg:GetDescendants()) do
-        local isMatch = false
-        if (obj:IsA("TextLabel") or obj:IsA("TextButton")) and IsVisibleGui(obj) then
-            local t = obj.Text:lower()
-            if t:find("no thanks") or t:find("nothanks") or t:find("no, thanks") then
-                isMatch = true
-            end
-        elseif (obj:IsA("ImageButton") or obj:IsA("GuiObject")) and IsVisibleGui(obj) then
-            local n = obj.Name:lower()
-            if n:find("nothanks") or n:find("no_thanks") or n:find("decline") then
-                isMatch = true
-            end
-        end
-        
-        if isMatch then
-            local target = obj
-            if not obj:IsA("TextButton") and not obj:IsA("ImageButton") then
-                target = obj:FindFirstAncestorWhichIsA("TextButton") or obj:FindFirstAncestorWhichIsA("ImageButton") or obj.Parent
-            end
-            if target then
-                ClickGuiButton(target)
-                ChickenInTower = false
-                LastTowerFinishedAt = tick()
-                Notify("ERDEVA HUB", "Tower selesai (K.O.) - Auto No Thanks diklik!", 2.5)
-                return true
-            end
-        end
-    end
-    return false
-end
-
--- TUTUP POPUP NOT ENOUGH CASH & POPUP LAIN
+-- TUTUP POPUP NOT ENOUGH CASH
 local function DismissAllPopups()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return false end
     local clicked = false
-    
-    if Flags.AutoNoThanks then
-        HandleTowerEndPopup()
-    end
     
     for _, gui in ipairs(pg:GetDescendants()) do
         if gui:IsA("GuiObject") and IsVisibleGui(gui) then
@@ -309,7 +266,7 @@ end
 task.spawn(function()
     while IsRunning do
         pcall(function() DismissAllPopups() end)
-        task.wait(0.1)
+        task.wait(0.2)
     end
 end)
 
@@ -537,7 +494,7 @@ local function DoRecycleAtBase()
     return true
 end
 
--- UPGRADES (TERMASUK UPGRADE RECYCLER)
+-- UPGRADES (TERMASUK FIX UPGRADE RECYCLER)
 local function DoUpgrades()
     if Flags.AutoBuyFeeders or Flags.AutoRebirth then
         ExecuteBasePad("BuyFeeder", { "buy feeder", "new feeder", "feeder", "purchase feeder", "unlock feeder", "add feeder" }, { "buy feeder", "new feeder" }, 2.5)
@@ -559,28 +516,65 @@ local function DoUpgrades()
     DismissAllPopups()
 end
 
--- KIRIM AYAM KE TOWER (HANYA 1X KLIK & TUNGGU NO THANKS + DELAY 5 DETIK)
-local function SendChickenToTower()
-    if ChickenInTower then return false end
-    if tick() - LastTowerFinishedAt < 5.0 then return false end -- Jeda 5 detik setelah No Thanks
-    if not CanRunAction("SendChickenTower", 5.0) then return false end
-    
-    local pg = player:FindFirstChild("PlayerGui")
-    if not pg then return false end
-    
-    for _, b in ipairs(pg:GetDescendants()) do
-        if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
-            local text = ButtonText(b)
-            if (text:find("tower") or b.Name:lower() == "tower") and not text:find("rebirth") and not text:find("not yet") and not text:find("no thanks") then
-                ClickGuiButton(b)
-                ChickenInTower = true
-                Notify("ERDEVA HUB", "Ayam dikirim ke Tower! Menunggu K.O...", 2.5)
-                return true
+-- BACKGROUND THREAD UNTUK TOWER & AUTO NO THANKS (TIDAK MENGGANGGU FARMING SCRAP)
+task.spawn(function()
+    while IsRunning do
+        pcall(function()
+            local pg = player:FindFirstChild("PlayerGui")
+            if not pg then return end
+            
+            -- 1. AUTO NO THANKS SAAT AYAM SELESAI / K.O.
+            if Flags.AutoNoThanks then
+                for _, obj in ipairs(pg:GetDescendants()) do
+                    local isMatch = false
+                    if (obj:IsA("TextLabel") or obj:IsA("TextButton")) and IsVisibleGui(obj) then
+                        local t = obj.Text:lower()
+                        if t:find("no thanks") or t:find("nothanks") or t:find("no, thanks") then
+                            isMatch = true
+                        end
+                    elseif (obj:IsA("ImageButton") or obj:IsA("GuiObject")) and IsVisibleGui(obj) then
+                        local n = obj.Name:lower()
+                        if n:find("nothanks") or n:find("no_thanks") or n:find("decline") then
+                            isMatch = true
+                        end
+                    end
+                    
+                    if isMatch then
+                        local target = obj
+                        if not obj:IsA("TextButton") and not obj:IsA("ImageButton") then
+                            target = obj:FindFirstAncestorWhichIsA("TextButton") or obj:FindFirstAncestorWhichIsA("ImageButton") or obj.Parent
+                        end
+                        if target then
+                            ClickGuiButton(target)
+                            ChickenInTower = false
+                            LastTowerFinishedAt = tick()
+                            Notify("ERDEVA HUB", "Tower selesai! Auto No Thanks diklik.", 2.0)
+                            break
+                        end
+                    end
+                end
             end
-        end
+            
+            -- 2. KIRIM AYAM KE TOWER (1X KLIK DENGAN JEDA 5 DETIK SETELAH NO THANKS)
+            if (Flags.AutoStartTower or Flags.AutoRebirth) and not ChickenInTower and (tick() - LastTowerFinishedAt >= 5.0) then
+                for _, b in ipairs(pg:GetDescendants()) do
+                    if (b:IsA("TextButton") or b:IsA("ImageButton")) and IsVisibleGui(b) then
+                        local text = ButtonText(b)
+                        if (text:find("tower") or b.Name:lower() == "tower") and not text:find("rebirth") and not text:find("not yet") and not text:find("no thanks") then
+                            if CanRunAction("SendChickenTower", 5.0) then
+                                ClickGuiButton(b)
+                                ChickenInTower = true
+                                Notify("ERDEVA HUB", "Ayam dikirim ke Tower!", 2.5)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+        task.wait(0.2)
     end
-    return false
-end
+end)
 
 -- REBIRTH SYSTEM (ORIGINAL v2.5)
 local function CheckAndDoRebirth()
@@ -598,11 +592,7 @@ local function CheckAndDoRebirth()
                         ClickGuiButton(b)
                         task.wait(0.3)
                         TryClickGuiAction("RebirthConfirm", { "confirm", "yes", "do rebirth" }, 1.5)
-                        task.wait(1.5)
-                        
-                        CurrentBatchScraps = 0
-                        table.clear(BlacklistedScraps)
-                        DoUpgrades()
+                        task.wait(1.0)
                         return true
                     end
                 end
@@ -622,7 +612,7 @@ local function GetArenaCenter()
     return nil
 end
 
--- MAIN AUTOMATION LOOP
+-- MAIN AUTOMATION LOOP (PERSIS SAMA DENGAN v2.5 ASLI)
 task.spawn(function()
     while IsRunning do
         pcall(function()
@@ -641,19 +631,14 @@ task.spawn(function()
                 return
             end
             
-            -- 1. CEK TOWER: JIKA AYAM BELUM DI TOWER & SUDAH LEWAT DELAY 5 DETIK
-            if (Flags.AutoStartTower or Flags.AutoRebirth) and not ChickenInTower then
-                SendChickenToTower()
-            end
-            
-            -- 2. CEK REBIRTH
+            -- 1. CEK REBIRTH
             if Flags.AutoRebirth then
                 CheckAndDoRebirth()
             end
             
             local targetCap = tonumber(Flags.ScrapCapacity) or 20
             
-            -- 3. SIKLUS AMBIL PLAT DI ARENA (ORIGINAL v2.5)
+            -- 2. SIKLUS AMBIL PLAT DI ARENA (ORIGINAL v2.5)
             if CurrentBatchScraps < targetCap then
                 SetState(State.COLLECTING)
                 local scrap = FindNearestArenaScrap()
@@ -668,11 +653,11 @@ task.spawn(function()
                     end
                 end
             else
-                -- 4. JALAN PULANG KE RECYCLER DI BASE
+                -- 3. JALAN PULANG KE RECYCLER DI BASE
                 SetState(State.RECYCLING)
                 DoRecycleAtBase()
                 
-                -- 5. UPGRADE FEEDER & RECYCLER SETELAH SETOR
+                -- 4. UPGRADE FEEDER & RECYCLER SETELAH SETOR
                 if CurrentBatchScraps == 0 then
                     SetState(State.UPGRADING)
                     DoUpgrades()
@@ -722,7 +707,7 @@ local Title = Instance.new("TextLabel", Top)
 Title.Size = UDim2.new(1,-70,1,0)
 Title.Position = UDim2.fromOffset(12,0)
 Title.BackgroundTransparency = 1
-Title.Text = "ERDEVA HUB <font color='#dc2323'>v3.7 (Master)</font>"
+Title.Text = "ERDEVA HUB <font color='#dc2323'>v3.8 (Fixed)</font>"
 Title.RichText = true Title.TextColor3 = C.Txt Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold Title.TextXAlignment = Enum.TextXAlignment.Left
 
