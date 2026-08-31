@@ -1,10 +1,10 @@
+-- [[ ERDEVA HUB v2.7 - SAFE & UNDETECTED ]]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local StarterGui = game:GetService("StarterGui")
 local RunService = game:GetService("RunService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
 
 local player = Players.LocalPlayer
 
@@ -40,7 +40,7 @@ local function Notify(title, desc, duration)
     end)
 end
 
-Notify("ERDEVA HUB", "v2.7 Loaded! Ready to farm.", 4.5)
+Notify("ERDEVA HUB", "v2.7 Loaded! Anti-Cheat Safe.", 4.5)
 
 local Flags = {
     AutoOpenEggs        = false,
@@ -140,10 +140,11 @@ local function TriggerPrompt(prompt)
     pcall(function()
         if fireproximityprompt then
             fireproximityprompt(prompt)
+        else
+            prompt:InputHoldBegin()
+            task.wait((prompt.HoldDuration or 0) + 0.02)
+            prompt:InputHoldEnd()
         end
-        prompt:InputHoldBegin()
-        task.wait((prompt.HoldDuration or 0) + 0.05)
-        prompt:InputHoldEnd()
     end)
     return true
 end
@@ -337,15 +338,6 @@ local function CollectScrapPlate(scrap)
     FastTouch(scrap)
     WalkTo(scrap.Position, 1.8, 2.5)
     FastTouch(scrap)
-    
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("ProximityPrompt") and obj.Enabled then
-            local part = obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent or obj:FindFirstAncestorWhichIsA("BasePart")
-            if part and (root.Position - part.Position).Magnitude <= 10 then
-                TriggerPrompt(obj)
-            end
-        end
-    end
 
     CurrentBatchScraps = CurrentBatchScraps + 1
     BlacklistedScraps[scrap] = tick()
@@ -440,47 +432,20 @@ local function ExecuteBasePad(actionName, keywords, guiPatterns, cooldown)
     return true
 end
 
--- EKSEKUSI UPGRADE RECYCLER DENGAN PROXIMITY + VIRTUAL INPUT [E]
 local function ExecuteUpgradeRecycler()
     local root = GetRoot()
-    if not root then return false end
+    local recPos = LOCKED_RECYCLER_POS or (root and root.Position)
+    if not recPos then return false end
     
-    -- 1. Pemicu ProximityPrompt di sekitar karakter
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("ProximityPrompt") and obj.Enabled then
             local part = obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent or obj:FindFirstAncestorWhichIsA("BasePart")
             if part then
-                local d = (root.Position - part.Position).Magnitude
+                local d = (recPos - part.Position).Magnitude
                 if d <= 15 then
                     local text = (obj.ActionText .. " " .. obj.ObjectText .. " " .. obj.Name .. " " .. part.Name):lower()
-                    if not (text:find("event") or text:find("follow") or text:find("coop") or text:find("board")) then
+                    if text:find("upgrade") and not (text:find("event") or text:find("follow") or text:find("coop") or text:find("board")) then
                         TriggerPrompt(obj)
-                    end
-                end
-            end
-        end
-    end
-    
-    -- 2. Tekan Tombol Fisik [E]
-    pcall(function()
-        if VirtualInputManager then
-            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-            task.wait(0.2)
-            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-        end
-    end)
-    
-    -- 3. Touch Pad & ClickDetector
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") then
-            local d = (root.Position - obj.Position).Magnitude
-            if d <= 12 then
-                local n = obj.Name:lower()
-                if n:find("upgrade") or n:find("recycler") or n:find("pad") or n:find("button") then
-                    FastTouch(obj)
-                    local cd = obj:FindFirstChildOfClass("ClickDetector")
-                    if cd and fireclickdetector then
-                        pcall(function() fireclickdetector(cd) end)
                     end
                 end
             end
@@ -548,7 +513,7 @@ task.spawn(function()
             local pg = player:FindFirstChild("PlayerGui")
             if not pg then return end
             
-            if ChickenInTower and (tick() - TowerSentTime > 60) then
+            if ChickenInTower and (tick() - TowerSentTime > 45) then
                 ChickenInTower = false
             end
             
@@ -576,7 +541,7 @@ task.spawn(function()
                             ClickGuiButton(target)
                             ChickenInTower = false
                             LastTowerFinishedAt = tick()
-                            Notify("ERDEVA HUB", "Tower finished!", 1.5)
+                            Notify("ERDEVA HUB", "Tower selesai! Auto No Thanks diklik.", 1.5)
                             break
                         end
                     end
@@ -594,7 +559,7 @@ task.spawn(function()
                                     ClickGuiButton(btn)
                                     ChickenInTower = true
                                     TowerSentTime = tick()
-                                    Notify("ERDEVA HUB", "Chicken sent to the Tower! Waiting...", 2.0)
+                                    Notify("ERDEVA HUB", "Ayam dikirim ke Tower! Menunggu K.O...", 2.0)
                                     break
                                 end
                             end
@@ -962,7 +927,7 @@ local function AddInfo(k, v, isLive)
 end
 
 AddInfo("Hub",            "ERDEVA HUB")
-AddInfo("Game",           "Grow a Chicken Figher")
+AddInfo("Game",           "Chicken Farm")
 AddInfo("Plates Grabbed", "0 / 20", true)
 AddInfo("Status",         "Operational")
 
