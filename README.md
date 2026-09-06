@@ -1,8 +1,8 @@
-# ERDEVA HUB v2.5
+# ERDEVA HUB v2.6
 
 > Grow a Chicken Fighter Automation Hub
 
-![ERDEVA HUB v2.5 Thumbnail](thumbnail.png)
+![ERDEVA HUB v2.6 Thumbnail](thumbnail.png)
 
 ## Features
 
@@ -31,7 +31,7 @@ Keyless — no key required.
 
 1. Open Roblox and join Grow a Chicken Fighter.
 2. Run the hub using your preferred supported executor.
-3. Open ERDEVA HUB v2.5.
+3. Open ERDEVA HUB v2.6.
 4. Select a tab and enable the features you want.
 
 ## Disclaimer
@@ -40,7 +40,7 @@ This project is provided for educational and testing purposes. Use third-party s
 
 ## Version
 
-Current version: `v2.5`
+Current version: `v2.6`
 
 ---
 
