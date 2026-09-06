@@ -44,7 +44,7 @@
 
 ## Key System
 
-Keyless / License System — Enter your license key or access the built-in Free Trial directly through the loader.
+Want the key? Join our Discord: https://discord.gg/jMFsPvxs4T
 
 ## Usage
 
