@@ -4,10 +4,6 @@
 
 ![ERDEVA HUB v2.6 Thumbnail](thumbnail.png)
 
-## Overview & GUI Preview
-
-![ERDEVA HUB GUI Preview](gui_preview.png)
-
 ## Features
 
 ### 🌾 Farm
