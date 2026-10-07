@@ -1,8 +1,8 @@
-# ERDEVA HUB v2.6
+# SpurHub v2.8
 
 > Grow a Chicken Fighter Automation Hub
 
-![ERDEVA HUB v2.6 Thumbnail](thumbnail.png)
+![SpurHub v2.8 Thumbnail](thumbnail.png)
 
 ## Features
 
@@ -55,7 +55,7 @@ This project is provided for educational and testing purposes only. Use third-pa
 
 ## Version
 
-Current version: `v2.6`
+Current version: `v2.8`
 
 ---
 
