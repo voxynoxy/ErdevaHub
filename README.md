@@ -1,8 +1,8 @@
-# SpurHub v2.8
+# SpurHub v2.6
 
 > Grow a Chicken Fighter Automation Hub
 
-![SpurHub v2.8 Thumbnail](thumbnail.png)
+![SpurHub v2.6 Thumbnail](thumbnail.png)
 
 ## Features
 
@@ -46,7 +46,7 @@ Want the key? Join our Discord: https://discord.gg/jMFsPvxs4T
 
 1. Launch Roblox and join **Grow a Chicken Fighter**.
 2. Execute the script using your preferred supported executor.
-3. The **SpurHub v2.8** interface will appear on your screen.
+3. The **SpurHub v2.6** interface will appear on your screen.
 4. Select your desired tab and toggle on the features you want.
 
 ## Disclaimer
@@ -55,7 +55,7 @@ This project is provided for educational and testing purposes only. Use third-pa
 
 ## Version
 
-Current version: `v2.8`
+Current version: `v2.6`
 
 ---
 
