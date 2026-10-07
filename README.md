@@ -46,7 +46,7 @@ Want the key? Join our Discord: https://discord.gg/jMFsPvxs4T
 
 1. Launch Roblox and join **Grow a Chicken Fighter**.
 2. Execute the script using your preferred supported executor.
-3. The **ERDEVA HUB v2.6** interface will appear on your screen.
+3. The **SpurHub v2.8** interface will appear on your screen.
 4. Select your desired tab and toggle on the features you want.
 
 ## Disclaimer
